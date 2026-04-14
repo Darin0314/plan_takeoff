@@ -53,12 +53,12 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 4.3: Manual quantity override — pencil icon on row hover → inline qty+unit inputs (Enter/Esc); overridden rows show amber qty + strikethrough original AI value; RotateCcw resets to AI; DB tracks is_override + original_quantity
 
 ### Phase 5 — Export
-- [ ] 5.1: PDF report generation (FPDF or similar)
-- [ ] 5.2: CSV export (already wired in TakeoffResults.jsx)
+- [x] 5.1: PDF report via FPDF — dark-themed Letter report, per-trade accent colors, project info block, items grouped by category (alternating shading, qty/unit/notes/confidence columns), override indicators (amber qty + grey strikethrough original), summary totals block, page footer; GET /api/takeoffs/{id}/pdf; Export PDF button in results header
+- [x] 5.2: CSV export (already wired in TakeoffResults.jsx)
 
 ### Phase 6 — Intelligence
 - [ ] 6.1: Repeat floor detection (auto-detect identical floors, multiply quantities)
 - [ ] 6.2: Unit type detection (Type A × N, Type B × M)
 - [ ] 6.3: Confidence scoring improvements
 
-## Next Up: Phase 5.1 — PDF report generation (FPDF or similar)
+## Next Up: Phase 6.1 — Repeat floor detection (auto-detect identical floors, multiply quantities)
