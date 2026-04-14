@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
-  Upload, FileText, Layers, ChevronLeft, Loader2,
-  CheckCircle2, Clock, AlertCircle, Play, RefreshCw
+  Upload, FileText, Loader2,
+  CheckCircle2, Clock, AlertCircle, Play, RefreshCw, CopyPlus, Pencil, Check, X
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 
@@ -264,6 +264,11 @@ export default function ProjectDetail() {
               </div>
             </div>
           )}
+
+          {/* Floor Multipliers */}
+          {files.some(f => f.process_status === 'complete') && (
+            <FloorMultiplierPanel projectId={id} />
+          )}
         </div>
       </div>
     </div>
@@ -303,6 +308,139 @@ function SheetList({ fileId, sheetCount }) {
             </div>
           ))}
         </div>
+      )}
+    </div>
+  )
+}
+
+function FloorMultiplierPanel({ projectId }) {
+  const [sheets, setSheets]       = useState(null)
+  const [detecting, setDetecting] = useState(false)
+
+  async function runDetection() {
+    setDetecting(true)
+    try {
+      await api.detectFloors(projectId)
+      setTimeout(async () => {
+        await loadMultipliers()
+        setDetecting(false)
+      }, 4000)
+    } catch (_) { setDetecting(false) }
+  }
+
+  async function loadMultipliers() {
+    const data = await api.getFloorMultipliers(projectId)
+    setSheets(data.sheets || [])
+  }
+
+  const nonTrivial = (sheets || []).filter(s => parseFloat(s.floor_multiplier) > 1)
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
+          <CopyPlus size={14} className="text-violet-400" /> Floor Multipliers
+        </h3>
+        <button
+          onClick={runDetection}
+          disabled={detecting}
+          className="flex items-center gap-1.5 text-xs bg-violet-700 hover:bg-violet-600 disabled:opacity-50 text-white px-2.5 py-1 rounded-lg transition-colors"
+        >
+          {detecting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {detecting ? 'Detecting…' : 'Auto-Detect'}
+        </button>
+      </div>
+
+      {sheets === null ? (
+        <button
+          onClick={loadMultipliers}
+          className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          Load multipliers ▼
+        </button>
+      ) : (
+        <div>
+          {nonTrivial.length === 0 ? (
+            <p className="text-slate-500 text-xs italic">No repeat floors detected. Run auto-detect or set manually below.</p>
+          ) : (
+            <p className="text-xs text-violet-300 mb-2">{nonTrivial.length} typical floor{nonTrivial.length !== 1 ? 's' : ''} detected</p>
+          )}
+          <div className="space-y-1 max-h-52 overflow-y-auto">
+            {(sheets || []).filter(s => s.sheet_number || s.sheet_title).map(s => (
+              <MultiplierRow key={s.id} sheet={s} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function MultiplierRow({ sheet: initialSheet }) {
+  const [sheet, setSheet]     = useState(initialSheet)
+  const [editing, setEditing] = useState(false)
+  const [multVal, setMultVal] = useState('')
+  const [noteVal, setNoteVal] = useState('')
+  const [saving, setSaving]   = useState(false)
+
+  function startEdit() {
+    setMultVal(String(parseFloat(sheet.floor_multiplier) || 1))
+    setNoteVal(sheet.floor_multiplier_note || '')
+    setEditing(true)
+  }
+
+  async function save() {
+    const m = parseFloat(multVal)
+    if (isNaN(m) || m < 1) return
+    setSaving(true)
+    try {
+      const res = await api.updateSheetMultiplier(sheet.id, {
+        floor_multiplier: m,
+        floor_multiplier_note: noteVal.trim(),
+      })
+      setSheet(res.sheet)
+      setEditing(false)
+    } catch (_) {}
+    setSaving(false)
+  }
+
+  const mult      = parseFloat(sheet.floor_multiplier) || 1
+  const isTypical = mult > 1
+
+  return (
+    <div className={`flex items-center gap-2 rounded px-2 py-1 text-xs group ${isTypical ? 'bg-violet-900/20' : 'bg-slate-800/40'}`}>
+      <span className={`font-mono shrink-0 px-1.5 py-0.5 rounded text-white ${
+        sheet.sheet_type === 'architectural' ? 'bg-blue-700' :
+        sheet.sheet_type === 'structural'    ? 'bg-orange-700' : 'bg-slate-600'
+      }`}>
+        {sheet.sheet_number || '—'}
+      </span>
+      <span className="text-slate-300 truncate flex-1">{sheet.sheet_title || sheet.sheet_type}</span>
+      {editing ? (
+        <>
+          <input type="number" min="1" step="1" value={multVal} onChange={e => setMultVal(e.target.value)}
+            className="w-14 bg-slate-700 border border-violet-500 rounded px-1.5 py-0.5 text-white text-center focus:outline-none" />
+          <input type="text" value={noteVal} onChange={e => setNoteVal(e.target.value)} placeholder="note"
+            className="w-24 bg-slate-700 border border-violet-500 rounded px-1.5 py-0.5 text-slate-300 focus:outline-none" />
+          <button onClick={save} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+          </button>
+          <button onClick={() => setEditing(false)} className="p-0.5 text-slate-400 hover:text-slate-200"><X size={12} /></button>
+        </>
+      ) : (
+        <>
+          <span className={`font-mono font-bold shrink-0 ${isTypical ? 'text-violet-300' : 'text-slate-500'}`}>
+            ×{mult.toFixed(0)}
+          </span>
+          {sheet.floor_multiplier_note && (
+            <span className="text-slate-500 truncate max-w-[80px]" title={sheet.floor_multiplier_note}>
+              {sheet.floor_multiplier_note}
+            </span>
+          )}
+          <button onClick={startEdit} className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-200 transition-opacity">
+            <Pencil size={11} />
+          </button>
+        </>
       )}
     </div>
   )

@@ -31,7 +31,10 @@ export const api = {
   getTakeoff:         (runId)            => req('GET',  `/takeoffs/${runId}`),
 
   // Sheets
-  getProjectSheets:   (projectId)        => req('GET',  `/projects/${projectId}/sheets`),
+  getProjectSheets:      (projectId)        => req('GET',  `/projects/${projectId}/sheets`),
+  detectFloors:          (projectId)        => req('POST', `/projects/${projectId}/detect-floors`),
+  getFloorMultipliers:   (projectId)        => req('GET',  `/projects/${projectId}/floor-multipliers`),
+  updateSheetMultiplier: (sheetId, data)    => req('PUT',  `/sheets/${sheetId}`, data),
 
   // Item overrides
   updateItem:  (itemId, data) => req('PUT',  `/takeoff-items/${itemId}`, data),

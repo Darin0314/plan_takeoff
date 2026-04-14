@@ -75,6 +75,53 @@ def _insert_item(conn, run_id: int, item: dict, order: int):
         )
 
 
+def _apply_floor_multipliers(items: list[dict], sheet_multipliers: dict) -> list[dict]:
+    """
+    For each item, check its source_sheets against the floor_multiplier map.
+    If ALL source sheets share the same multiplier > 1.0, scale the quantity and annotate.
+    If sheets have mixed multipliers, leave quantity unchanged but note the ambiguity.
+    """
+    result = []
+    for item in items:
+        refs = item.get('source_sheets') or []
+        if not refs or item.get('quantity') is None:
+            result.append(item)
+            continue
+
+        mults = []
+        notes = []
+        for ref in refs:
+            if ref in sheet_multipliers:
+                m, n = sheet_multipliers[ref]
+                mults.append(m)
+                if n:
+                    notes.append(n)
+
+        if not mults:
+            result.append(item)
+            continue
+
+        unique_mults = set(mults)
+
+        if len(unique_mults) == 1:
+            multiplier = mults[0]
+            if multiplier > 1.0:
+                orig_qty = item['quantity']
+                note_str = notes[0] if notes else f'×{multiplier:.0f} floors'
+                existing = item.get('calc_notes') or ''
+                item = dict(item)
+                item['quantity']   = round(float(orig_qty) * multiplier, 3)
+                item['calc_notes'] = f"{existing}; ×{multiplier:.0f} floor repeat ({note_str})".lstrip('; ')
+        else:
+            # Mixed multipliers — flag but don't scale
+            item = dict(item)
+            existing = item.get('calc_notes') or ''
+            item['calc_notes'] = f"{existing}; NOTE: mixed floor multipliers on source sheets — verify manually".lstrip('; ')
+
+        result.append(item)
+    return result
+
+
 def run_takeoff_job(run_id: int, project_id: int, trade: str):
     """
     1. Look up the project's completed files and their plan_sheets.
@@ -108,6 +155,15 @@ def run_takeoff_job(run_id: int, project_id: int, trade: str):
         for s in sheets:
             if s.get('page_image_path'):
                 s['abs_image_path'] = os.path.join(STORAGE_PATH, s['page_image_path'])
+
+        # Build sheet_number → floor_multiplier lookup for repeat-floor scaling
+        sheet_multipliers: dict[str, tuple[float, str]] = {}
+        for s in sheets:
+            snum = s.get('sheet_number')
+            if snum:
+                mult = float(s.get('floor_multiplier') or 1.0)
+                note = s.get('floor_multiplier_note') or ''
+                sheet_multipliers[snum] = (mult, note)
 
         FRAMING_CATS  = {'Exterior Framing', 'Interior Framing', 'Bearing Walls', 'Floor System', 'Roof Framing'}
         DRYWALL_CATS  = {'Wall Drywall', 'Ceiling Drywall', 'Soffit/Special'}
@@ -160,6 +216,10 @@ def run_takeoff_job(run_id: int, project_id: int, trade: str):
                 items = [i for i in items if i.get('category') in CONCRETE_CATS]
             elif trade == 'site_work':
                 items = [i for i in items if i.get('category') in SITEWORK_CATS]
+
+        # Apply floor multipliers — if all source sheets for an item share the same
+        # multiplier > 1, scale quantity and annotate calc_notes.
+        items = _apply_floor_multipliers(items, sheet_multipliers)
 
         # Clear any previous items for this run (idempotent re-run)
         with conn.cursor() as cur:

@@ -40,6 +40,10 @@ try {
             (new UploadController())->store($id);
         } elseif ($id && $sub === 'sheets' && $method === 'GET') {
             $ctrl->sheets($id);
+        } elseif ($id && $sub === 'detect-floors' && $method === 'POST') {
+            $ctrl->detectFloors($id);
+        } elseif ($id && $sub === 'floor-multipliers' && $method === 'GET') {
+            $ctrl->floorMultipliers($id);
         } elseif ($id && $sub === 'files' && $method === 'GET') {
             // list files for project — return from withFiles
             $project = Project::withFiles($id);
@@ -68,6 +72,13 @@ try {
             (new ReportController())->pdf($id);
         } elseif ($method === 'GET' && !$sub) {
             (new TakeoffController())->show($id);
+        } else {
+            http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
+        }
+
+    } elseif ($resource === 'sheets') {
+        if ($method === 'PUT') {
+            (new ProjectController())->updateSheetMultiplier($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }
