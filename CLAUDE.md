@@ -100,15 +100,43 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 13.3: Supplier UI — `SupplierPanel.jsx`: "Supplier Prices" tab (violet) in TakeoffResults; list picker + "Match Prices" button; summary cards (matched count, supplier total, default total, savings/premium delta); results grouped by category (collapsible), per-row: description, matched supplier desc + match type badge (exact/contains/fuzzy), supplier $/unit, extended cost, default $/unit, default extended, delta (green savings / red premium). Unmatched rows amber-tinted with warning icon. Filter: All/Matched/Unmatched. `SupplierPriceLists.jsx`: management page at /supplier-prices — drag-target CSV upload (name required, description optional), file picker, import feedback, list of all price lists (row count, date, delete with confirm). "Supplier Prices" nav link in Layout header. Route wired in App.jsx.
 
 ### Phase 14 — Takeoff History & Audit Trail
-- [ ] 14.1: DB + backend — `activity_log` table (project_id, run_id, user_id, action, detail JSON, created_at); log events: run.started, run.completed, run.failed, item.override, item.reset, item.cost_set, item.annotated, file.uploaded, file.reprocessed, share.created; GET /projects/{id}/activity
-- [ ] 14.2: UI — "History" tab in ProjectDetail; timeline list (icon+color per action type, user name, timestamp, detail summary); filter by action type; paginated (50/page)
+- [x] 14.1: DB + backend — `activity_log` table (project_id, run_id, user_id, action, detail JSON, created_at); `ActivityLogger` PHP service with log/logForRun/logForItem helpers; all events wired: run.started (PHP TakeoffController), run.completed/run.failed (Python dispatcher), item.override/item.reset/item.annotated (TakeoffController), item.cost_set (CostController), file.uploaded/file.reprocessed (UploadController), share.created (ShareController); GET /projects/{id}/activity (paginated 50/page, user_name joined); Python FastAPI accepts user_id in RunTakeoffRequest and passes through
+- [x] 14.2: UI — `HistoryPanel.jsx` component; full-width section below project grid; vertical timeline with icon+color per action type (10 action types mapped); filter pills (All/Runs/Items/Files/Shares); human-readable detail summaries per action; timeAgo timestamps + user name; paginated 50/page with prev/next
 
 ### Phase 15 — Multi-Trade Run Dashboard
-- [ ] 15.1: Backend — POST /projects/{id}/takeoffs/all-trades; queues one run per trade (roofing/framing/drywall/electrical/hvac/plumbing/concrete/site_work) sequentially via FastAPI; GET /projects/{id}/takeoffs/batch-status returns per-trade status (pending/processing/complete/error/not_run) with item counts
-- [ ] 15.2: UI — "Run All Trades" button in ProjectDetail; live progress board replaces run button after click; per-trade status cards (spinner/check/error icon, item count on complete); auto-navigates to most-recently-completed trade when done; polling stops when all trades reach terminal state
+- [x] 15.1: Backend — POST /projects/{id}/takeoffs/all-trades (PHP creates 8 takeoff_runs rows → calls Python /api/projects/{id}/takeoffs/all-trades which runs them sequentially in background); GET /projects/{id}/takeoffs/batch-status (PHP queries DB, returns per-trade status pending/processing/complete/error/not_run + item_count); also fixed AI_API_URL in config.php to include /api prefix (was missing — all PHP→Python curl calls were 404ing)
+- [x] 15.2: UI — "Run All Trades" button in ProjectDetail; BatchProgressBoard component replaces trade grid after click; per-trade cards (spinner/check/error/clock icon + item count badge); progress bar; auto-navigates to each completed trade as it finishes; polls /batch-status every 2.5s; polling stops + Dismiss button appears when all trades reach terminal state
 
 ### Phase 16 — Notes & Markup on Sheet Images
-- [ ] 16.1: DB + backend — `sheet_notes` table (sheet_id, x_pct, y_pct, note TEXT, color, created_by, created_at); POST /sheets/{id}/notes, GET /sheets/{id}/notes, DELETE /sheet-notes/{id}
-- [ ] 16.2: UI — annotation layer in SheetModal; click on image to drop a pin (colored circle); pin shows note in tooltip on hover; "Add Note" mode toggle button in modal header; note input popover on click; existing pins listed in sidebar; delete button per note
+- [x] 16.1: DB + backend — `sheet_notes` table (sheet_id, x_pct, y_pct, note TEXT, color, created_by, created_at); POST /sheets/{id}/notes, GET /sheets/{id}/notes, DELETE /sheet-notes/{id}; SheetNoteController.php; api.js methods added
+- [x] 16.2: UI — "Add Note" toggle in header → crosshair mode; click image drops pin at x_pct/y_pct (getBoundingClientRect, zoom-correct); pending pin previews as pulsing dot; note popover (textarea, Enter=save, 5-color picker, Save/Cancel); existing pins as absolute circles over image; tooltip on hover (note + user); notes sidebar with count badge, delete per note; Esc dismisses popover → mode → modal
 
-## Next Up: Phase 14.1 — Activity Log (DB schema + backend events)
+### Phase 17 — AI Visual Annotation (Option B → Option A roadmap)
+- [ ] 17.1: Backend — FastAPI POST /annotate-sheet endpoint; sends sheet image to Claude Haiku with trade-specific prompt asking for highlight regions as JSON (label, color, x1_pct/y1_pct/x2_pct/y2_pct); Pillow composites semi-transparent colored rectangles + labels onto image; saves annotated image to storage/annotated/; new `sheet_annotations` table (sheet_id, trade, annotated_image_path, region_count, created_at); PHP AnnotationController (POST /sheets/{id}/annotate?trade=, GET /sheets/{id}/annotate?trade=)
+- [ ] 17.2: UI — "Annotate" button in TakeoffResults header (per trade); triggers annotation for all source sheets in that run; SheetModal gets "Annotations" toggle (original vs annotated view); trade-colored legend in modal header; loading spinner while generating; annotated image cached (re-use if already exists)
+
+### Phase 18 — Project Templates
+- [ ] 18.1: DB + backend — `project_templates` table (name, description, project_type, trade config JSON); save current project's unit costs as template; apply template to new project; GET/POST/DELETE /project-templates
+- [ ] 18.2: UI — "Save as Template" button in ProjectDetail; template picker on new project create modal; template library page
+
+### Phase 19 — Export Package
+- [ ] 19.1: Backend — GET /takeoffs/{id}/export-package; generates ZIP containing: PDF report, CSV, annotated sheet images (if generated), supplier match CSV if available; PHP ZipArchive
+- [ ] 19.2: UI — "Export Package" button in TakeoffResults header; download triggers ZIP
+
+### Phase 20 — Specification Sheet Reader
+- [ ] 20.1: Backend — FastAPI POST /projects/{id}/read-specs; targets cover/specs sheets; Claude extracts specified materials, brands, finishes, code references; stores in `project_specs` table; PHP endpoint GET /projects/{id}/specs
+- [ ] 20.2: UI — "Specs" tab in ProjectDetail; extracted spec items listed by CSI division; cross-reference badge on takeoff items where spec conflicts detected
+
+### Phase 21 — Confidence Review Queue
+- [ ] 21.1: Backend — GET /projects/{id}/review-queue; returns all low-confidence + flagged items across all trades for a project, sorted by confidence; bulk update endpoint PUT /review-queue/items (batch approve/flag/override)
+- [ ] 21.2: UI — "Review" page at /projects/{id}/review; all low-confidence items in one focused list; inline override/flag/approve without navigating per trade; progress bar (reviewed / total)
+
+### Phase 22 — Project Dashboard
+- [ ] 22.1: Backend — GET /dashboard; total projects, recent activity (last 10 across all projects), cost summary across all projects with complete runs, trade breakdown totals
+- [ ] 22.2: UI — Dashboard home page replacing ProjectList; stat cards (projects, total estimated value, runs this week); recent activity feed; cost-by-trade bar chart; quick-access recent projects
+
+### Phase 23 — User Management
+- [ ] 23.1: DB + backend — roles (viewer/editor/admin) on users table; invite endpoint (POST /users/invite, sends email); PUT /users/{id}/role; GET /users (admin only); deactivate user
+- [ ] 23.2: UI — Settings page (admin only); user list with role badges; invite form (email + role); role change dropdown; deactivate toggle; activity count per user
+
+## Next Up: Phase 17.1 — AI Annotation Backend

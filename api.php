@@ -32,6 +32,7 @@ require_once __DIR__ . '/src/Controllers/ProjectCompareController.php';
 require_once __DIR__ . '/src/Controllers/ShareController.php';
 require_once __DIR__ . '/src/Controllers/SupplierController.php';
 require_once __DIR__ . '/src/Controllers/SheetNoteController.php';
+require_once __DIR__ . '/src/Controllers/AnnotationController.php';
 require_once __DIR__ . '/src/Services/ActivityLogger.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
@@ -183,6 +184,8 @@ try {
             (new ShareController())->list($id);
         } elseif ($method === 'GET' && $sub === 'supplier-match') {
             (new SupplierController())->supplierMatch($id);
+        } elseif ($method === 'GET' && $sub === 'annotations') {
+            (new AnnotationController())->forRun($id);
         } elseif ($method === 'GET' && !$sub) {
             (new TakeoffController())->show($id);
         } else {
@@ -207,6 +210,10 @@ try {
             (new SheetNoteController())->index($id);
         } elseif ($sub2 === 'notes' && $method === 'POST') {
             (new SheetNoteController())->store($id);
+        } elseif ($sub2 === 'annotate' && $method === 'POST') {
+            (new AnnotationController())->generate($id);
+        } elseif ($sub2 === 'annotate' && $method === 'GET') {
+            (new AnnotationController())->show($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }

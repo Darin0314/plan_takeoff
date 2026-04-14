@@ -90,4 +90,9 @@ export const api = {
   getSheetNotes:    (sheetId)       => req('GET',    `/sheets/${sheetId}/notes`),
   createSheetNote:  (sheetId, data) => req('POST',   `/sheets/${sheetId}/notes`, data),
   deleteSheetNote:  (noteId)        => req('DELETE', `/sheet-notes/${noteId}`),
+
+  // Annotations (Phase 17)
+  generateAnnotation: (sheetId, trade) => req('POST', `/sheets/${sheetId}/annotate?trade=${trade}`),
+  getAnnotation:      (sheetId, trade) => req('GET',  `/sheets/${sheetId}/annotate?trade=${trade}`),
+  getRunAnnotations:  (runId, trade)   => req('GET',  `/takeoffs/${runId}/annotations${trade ? `?trade=${trade}` : ''}`),
 }
