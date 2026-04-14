@@ -2,7 +2,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, Link } from 'react-router-dom'
 import {
   Upload, FileText, Loader2,
-  CheckCircle2, Clock, AlertCircle, Play, RefreshCw, CopyPlus, Pencil, Check, X
+  CheckCircle2, Clock, AlertCircle, Play, RefreshCw, CopyPlus, Pencil, Check, X, LayoutGrid,
+  ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw
 } from 'lucide-react'
 import { api } from '../lib/api.js'
 
@@ -164,35 +165,26 @@ export default function ProjectDetail() {
             </div>
           ) : (
             <div className="space-y-3">
-              {files.map(f => (
-                <div key={f.id} className="bg-slate-800 border border-slate-700 rounded-xl p-4">
-                  <div className="flex items-center gap-3 mb-3">
-                    {statusIcon(f.process_status)}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-white font-medium truncate">{f.original_filename}</p>
-                      <p className="text-slate-500 text-xs">
-                        {f.page_count ? `${f.page_count} pages` : 'Processing…'} ·{' '}
-                        {f.file_size ? `${(f.file_size / 1024 / 1024).toFixed(1)} MB` : ''}
-                      </p>
-                    </div>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      f.process_status === 'complete'    ? 'bg-green-900 text-green-300' :
-                      f.process_status === 'processing'  ? 'bg-blue-900 text-blue-300' :
-                      f.process_status === 'error'       ? 'bg-red-900 text-red-300' :
-                      'bg-slate-700 text-slate-400'
-                    }`}>
-                      {f.process_status}
-                    </span>
-                  </div>
-
-                  {/* Sheet list */}
-                  {f.sheet_count > 0 && (
-                    <SheetList fileId={f.id} sheetCount={f.sheet_count} />
-                  )}
-                  {f.process_status === 'error' && f.process_error && (
-                    <p className="text-red-400 text-xs mt-2">{f.process_error}</p>
-                  )}
-                </div>
+              {files.map((f, idx) => (
+                <FileCard
+                  key={f.id}
+                  file={f}
+                  isFirst={idx === 0}
+                  isLast={idx === files.length - 1}
+                  onReorder={async (dir) => {
+                    await api.reorderFile(f.id, dir)
+                    await load()
+                  }}
+                  onToggleActive={async () => {
+                    await api.toggleFileActive(f.id)
+                    await load()
+                  }}
+                  onReprocess={async () => {
+                    await api.reprocessFile(f.id)
+                    startPolling()
+                    await load()
+                  }}
+                />
               ))}
             </div>
           )}
@@ -209,7 +201,7 @@ export default function ProjectDetail() {
                 <button
                   key={t.value}
                   onClick={() => handleRunTakeoff(t.value)}
-                  disabled={files.every(f => f.process_status !== 'complete') || runningTrade === t.value}
+                  disabled={files.every(f => f.process_status !== 'complete' || !f.is_active) || runningTrade === t.value}
                   className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all
                     disabled:opacity-40 disabled:cursor-not-allowed
                     ${t.value === 'all' ? 'col-span-2' : ''}
@@ -223,7 +215,7 @@ export default function ProjectDetail() {
                 </button>
               ))}
             </div>
-            {files.every(f => f.process_status !== 'complete') && (
+            {files.every(f => f.process_status !== 'complete' || !f.is_active) && (
               <p className="text-slate-500 text-xs mt-2 text-center">Upload and process a plan set first</p>
             )}
           </div>
@@ -266,11 +258,123 @@ export default function ProjectDetail() {
           )}
 
           {/* Floor Multipliers */}
-          {files.some(f => f.process_status === 'complete') && (
+          {files.some(f => f.process_status === 'complete' && f.is_active) && (
             <FloorMultiplierPanel projectId={id} />
+          )}
+
+          {/* Unit Types */}
+          {files.some(f => f.process_status === 'complete' && f.is_active) && (
+            <UnitTypePanel projectId={id} />
           )}
         </div>
       </div>
+    </div>
+  )
+}
+
+function FileCard({ file: f, isFirst, isLast, onReorder, onToggleActive, onReprocess }) {
+  const [actionBusy, setActionBusy] = useState(null) // 'up'|'down'|'active'|'reprocess'
+
+  async function doAction(key, fn) {
+    setActionBusy(key)
+    try { await fn() } catch (_) {}
+    setActionBusy(null)
+  }
+
+  const inactive = !f.is_active
+  const canReprocess = f.process_status === 'complete' || f.process_status === 'error'
+
+  return (
+    <div className={`bg-slate-800 border rounded-xl p-4 transition-opacity ${
+      inactive ? 'border-slate-700/50 opacity-60' : 'border-slate-700'
+    }`}>
+      <div className="flex items-center gap-3 mb-3">
+        {/* Reorder arrows */}
+        <div className="flex flex-col gap-0.5">
+          <button
+            disabled={isFirst || actionBusy !== null}
+            onClick={() => doAction('up', () => onReorder('up'))}
+            className="p-0.5 rounded text-slate-500 hover:text-white hover:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+            title="Move up"
+          >
+            {actionBusy === 'up' ? <Loader2 size={13} className="animate-spin" /> : <ChevronUp size={13} />}
+          </button>
+          <button
+            disabled={isLast || actionBusy !== null}
+            onClick={() => doAction('down', () => onReorder('down'))}
+            className="p-0.5 rounded text-slate-500 hover:text-white hover:bg-slate-700 disabled:opacity-20 disabled:cursor-not-allowed transition-colors"
+            title="Move down"
+          >
+            {actionBusy === 'down' ? <Loader2 size={13} className="animate-spin" /> : <ChevronDown size={13} />}
+          </button>
+        </div>
+
+        {statusIcon(f.process_status)}
+
+        <div className="flex-1 min-w-0">
+          <p className={`font-medium truncate ${inactive ? 'text-slate-500' : 'text-white'}`}>
+            {f.original_filename}
+          </p>
+          <p className="text-slate-500 text-xs">
+            {f.page_count ? `${f.page_count} pages` : 'Processing…'} ·{' '}
+            {f.file_size ? `${(f.file_size / 1024 / 1024).toFixed(1)} MB` : ''}
+          </p>
+        </div>
+
+        {/* Status badge */}
+        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+          f.process_status === 'complete'   ? 'bg-green-900 text-green-300' :
+          f.process_status === 'processing' ? 'bg-blue-900 text-blue-300' :
+          f.process_status === 'error'      ? 'bg-red-900 text-red-300' :
+          'bg-slate-700 text-slate-400'
+        }`}>
+          {f.process_status}
+        </span>
+
+        {/* Action buttons */}
+        <div className="flex items-center gap-1">
+          {/* Re-process */}
+          {canReprocess && (
+            <button
+              disabled={actionBusy !== null}
+              onClick={() => doAction('reprocess', onReprocess)}
+              className="p-1.5 rounded text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-40 transition-colors"
+              title="Re-process file"
+            >
+              {actionBusy === 'reprocess' ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
+            </button>
+          )}
+          {/* Active toggle */}
+          <button
+            disabled={actionBusy !== null}
+            onClick={() => doAction('active', onToggleActive)}
+            className={`p-1.5 rounded transition-colors disabled:opacity-40 ${
+              inactive
+                ? 'text-slate-500 hover:text-green-400 hover:bg-slate-700'
+                : 'text-slate-400 hover:text-yellow-400 hover:bg-slate-700'
+            }`}
+            title={inactive ? 'Activate file' : 'Deactivate file (exclude from takeoffs)'}
+          >
+            {actionBusy === 'active'
+              ? <Loader2 size={14} className="animate-spin" />
+              : inactive ? <EyeOff size={14} /> : <Eye size={14} />
+            }
+          </button>
+        </div>
+      </div>
+
+      {/* Inactive notice */}
+      {inactive && (
+        <p className="text-xs text-yellow-600 mb-2">Inactive — excluded from takeoffs</p>
+      )}
+
+      {/* Sheet list */}
+      {f.sheet_count > 0 && (
+        <SheetList fileId={f.id} sheetCount={f.sheet_count} />
+      )}
+      {f.process_status === 'error' && f.process_error && (
+        <p className="text-red-400 text-xs mt-2">{f.process_error}</p>
+      )}
     </div>
   )
 }
@@ -435,6 +539,147 @@ function MultiplierRow({ sheet: initialSheet }) {
           {sheet.floor_multiplier_note && (
             <span className="text-slate-500 truncate max-w-[80px]" title={sheet.floor_multiplier_note}>
               {sheet.floor_multiplier_note}
+            </span>
+          )}
+          <button onClick={startEdit} className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-200 transition-opacity">
+            <Pencil size={11} />
+          </button>
+        </>
+      )}
+    </div>
+  )
+}
+
+function UnitTypePanel({ projectId }) {
+  const [sheets, setSheets]       = useState(null)
+  const [detecting, setDetecting] = useState(false)
+
+  async function runDetection() {
+    setDetecting(true)
+    try {
+      await api.detectUnitTypes(projectId)
+      setTimeout(async () => {
+        await loadUnitTypes()
+        setDetecting(false)
+      }, 4000)
+    } catch (_) { setDetecting(false) }
+  }
+
+  async function loadUnitTypes() {
+    const data = await api.getUnitTypes(projectId)
+    setSheets(data.sheets || [])
+  }
+
+  const withTypes = (sheets || []).filter(s => s.unit_type_name && s.unit_type_count >= 2)
+
+  return (
+    <div className="mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-1.5">
+          <LayoutGrid size={14} className="text-pink-400" /> Unit Types
+        </h3>
+        <button
+          onClick={runDetection}
+          disabled={detecting}
+          className="flex items-center gap-1.5 text-xs bg-pink-700 hover:bg-pink-600 disabled:opacity-50 text-white px-2.5 py-1 rounded-lg transition-colors"
+        >
+          {detecting ? <Loader2 size={12} className="animate-spin" /> : <RefreshCw size={12} />}
+          {detecting ? 'Detecting…' : 'Auto-Detect'}
+        </button>
+      </div>
+
+      {sheets === null ? (
+        <button
+          onClick={loadUnitTypes}
+          className="text-xs text-slate-500 hover:text-slate-300 transition-colors"
+        >
+          Load unit types ▼
+        </button>
+      ) : (
+        <div>
+          {withTypes.length === 0 ? (
+            <p className="text-slate-500 text-xs italic">No unit type repeats detected. Run auto-detect or set manually below.</p>
+          ) : (
+            <p className="text-xs text-pink-300 mb-2">{withTypes.length} unit type sheet{withTypes.length !== 1 ? 's' : ''} detected</p>
+          )}
+          <div className="space-y-1 max-h-52 overflow-y-auto">
+            {(sheets || []).filter(s => s.sheet_number || s.sheet_title).map(s => (
+              <UnitTypeRow key={s.id} sheet={s} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function UnitTypeRow({ sheet: initialSheet }) {
+  const [sheet, setSheet]       = useState(initialSheet)
+  const [editing, setEditing]   = useState(false)
+  const [nameVal, setNameVal]   = useState('')
+  const [countVal, setCountVal] = useState('')
+  const [noteVal, setNoteVal]   = useState('')
+  const [saving, setSaving]     = useState(false)
+
+  function startEdit() {
+    setNameVal(sheet.unit_type_name || '')
+    setCountVal(String(sheet.unit_type_count || ''))
+    setNoteVal(sheet.unit_type_note || '')
+    setEditing(true)
+  }
+
+  async function save() {
+    const count = parseInt(countVal, 10)
+    if (nameVal.trim() && (isNaN(count) || count < 1)) return
+    setSaving(true)
+    try {
+      const res = await api.updateSheetUnitType(sheet.id, {
+        unit_type_name:  nameVal.trim() || null,
+        unit_type_count: nameVal.trim() ? (count || null) : null,
+        unit_type_note:  noteVal.trim() || null,
+      })
+      setSheet(res.sheet)
+      setEditing(false)
+    } catch (_) {}
+    setSaving(false)
+  }
+
+  const hasType = sheet.unit_type_name && sheet.unit_type_count >= 2
+
+  return (
+    <div className={`flex items-center gap-2 rounded px-2 py-1 text-xs group ${hasType ? 'bg-pink-900/20' : 'bg-slate-800/40'}`}>
+      <span className={`font-mono shrink-0 px-1.5 py-0.5 rounded text-white ${
+        sheet.sheet_type === 'architectural' ? 'bg-blue-700' :
+        sheet.sheet_type === 'structural'    ? 'bg-orange-700' : 'bg-slate-600'
+      }`}>
+        {sheet.sheet_number || '—'}
+      </span>
+      <span className="text-slate-300 truncate flex-1">{sheet.sheet_title || sheet.sheet_type}</span>
+      {editing ? (
+        <>
+          <input type="text" value={nameVal} onChange={e => setNameVal(e.target.value)} placeholder="Type A"
+            className="w-16 bg-slate-700 border border-pink-500 rounded px-1.5 py-0.5 text-white text-center focus:outline-none" />
+          <input type="number" min="1" step="1" value={countVal} onChange={e => setCountVal(e.target.value)} placeholder="qty"
+            className="w-12 bg-slate-700 border border-pink-500 rounded px-1.5 py-0.5 text-white text-center focus:outline-none" />
+          <input type="text" value={noteVal} onChange={e => setNoteVal(e.target.value)} placeholder="note"
+            className="w-20 bg-slate-700 border border-pink-500 rounded px-1.5 py-0.5 text-slate-300 focus:outline-none" />
+          <button onClick={save} disabled={saving} className="p-0.5 text-green-400 hover:text-green-300">
+            {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+          </button>
+          <button onClick={() => setEditing(false)} className="p-0.5 text-slate-400 hover:text-slate-200"><X size={12} /></button>
+        </>
+      ) : (
+        <>
+          {hasType ? (
+            <span className="font-mono font-bold shrink-0 text-pink-300">
+              {sheet.unit_type_name} ×{sheet.unit_type_count}
+            </span>
+          ) : (
+            <span className="font-mono shrink-0 text-slate-600">—</span>
+          )}
+          {sheet.unit_type_note && (
+            <span className="text-slate-500 truncate max-w-[80px]" title={sheet.unit_type_note}>
+              {sheet.unit_type_note}
             </span>
           )}
           <button onClick={startEdit} className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-slate-200 transition-opacity">

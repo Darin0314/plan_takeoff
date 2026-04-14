@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, FolderOpen, MapPin, Hash, Layers, ChevronRight, Loader2 } from 'lucide-react'
+import { Plus, FolderOpen, MapPin, Hash, Layers, ChevronRight, Loader2, GitCompareArrows } from 'lucide-react'
 import { api } from '../lib/api.js'
 
 const PROJECT_TYPES = [
@@ -55,12 +55,20 @@ export default function ProjectList() {
           <h1 className="text-2xl font-bold text-white">Projects</h1>
           <p className="text-slate-400 text-sm mt-1">Upload plan sets and run AI takeoffs by trade</p>
         </div>
-        <button
-          onClick={() => setShowForm(true)}
-          className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
-        >
-          <Plus size={18} /> New Project
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => navigate('/compare')}
+            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-slate-200 px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            <GitCompareArrows size={18} /> Compare
+          </button>
+          <button
+            onClick={() => setShowForm(true)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-500 text-white px-4 py-2 rounded-lg font-medium transition-colors"
+          >
+            <Plus size={18} /> New Project
+          </button>
+        </div>
       </div>
 
       {/* New Project Form */}

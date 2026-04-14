@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Download, FileDown, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check, ShieldAlert, DollarSign, List, GitCompare, Flag, MessageSquare, Files, Share2, Copy, Trash2, Eye, Clock } from 'lucide-react'
+import { Loader2, Download, FileDown, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check, ShieldAlert, DollarSign, List, GitCompare, Flag, MessageSquare, Files, Share2, Copy, Trash2, Eye, Clock, Tag } from 'lucide-react'
 import { api } from '../lib/api.js'
 import CostPanel from '../components/CostPanel.jsx'
 import DiffPanel from '../components/DiffPanel.jsx'
+import SupplierPanel from '../components/SupplierPanel.jsx'
 
 const CONFIDENCE_COLORS = {
   high:   'text-green-400 bg-green-900/40',
@@ -405,6 +406,16 @@ export default function TakeoffResults() {
           >
             <Files size={14} /> Files
           </button>
+          <button
+            onClick={() => setActiveTab('supplier')}
+            className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors -mb-px ${
+              activeTab === 'supplier'
+                ? 'border-violet-500 text-white'
+                : 'border-transparent text-slate-400 hover:text-white'
+            }`}
+          >
+            <Tag size={14} /> Supplier Prices
+          </button>
         </div>
       )}
 
@@ -416,6 +427,11 @@ export default function TakeoffResults() {
       {/* Compare tab */}
       {activeTab === 'diff' && (
         <DiffPanel runId={runId} projectId={run?.project_id} trade={run?.trade} />
+      )}
+
+      {/* Supplier prices tab */}
+      {activeTab === 'supplier' && (
+        <SupplierPanel runId={runId} />
       )}
 
       {/* Files tab */}
