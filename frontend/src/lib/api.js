@@ -65,9 +65,10 @@ export const api = {
   getSharedRun: (token)        => fetch('/api/share/' + token, { credentials: 'include' }).then(r => r.json()),
 
   // Supplier price lists
-  getSupplierLists:    ()         => req('GET',    '/supplier-price-lists'),
-  deleteSupplierList:  (id)       => req('DELETE', `/supplier-price-lists/${id}`),
-  uploadSupplierList:  (formData) => fetch('/api/supplier-price-lists', {
+  getSupplierLists:    ()              => req('GET',    '/supplier-price-lists'),
+  deleteSupplierList:  (id)            => req('DELETE', `/supplier-price-lists/${id}`),
+  getSupplierMatch:    (runId, listId) => req('GET',    `/takeoffs/${runId}/supplier-match?list=${listId}`),
+  uploadSupplierList:  (formData)      => fetch('/api/supplier-price-lists', {
     method: 'POST',
     credentials: 'include',
     body: formData,  // multipart — no Content-Type header, browser sets boundary

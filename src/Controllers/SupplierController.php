@@ -151,4 +151,235 @@ class SupplierController {
            ->execute([$id]);
         echo json_encode(['success' => true]);
     }
+
+    /**
+     * GET /takeoffs/{runId}/supplier-match?list={listId}
+     *
+     * Matches each takeoff item to supplier prices by normalized
+     * category + description. For each item returns:
+     *   - best_match supplier price row (null if none)
+     *   - extended_cost = qty × supplier unit_price
+     *   - unit_cost_default = mat+lab from unit_costs defaults
+     *   - savings / premium delta vs default
+     *
+     * Normalization: lowercase, strip punctuation, collapse spaces.
+     * Matching strategy:
+     *   1. Exact category+description match
+     *   2. Description contains match (supplier desc inside item desc or vice versa)
+     *   3. Word-intersection score ≥ 0.5 (Jaccard)
+     */
+    public function supplierMatch(int $runId): void {
+        $listId = isset($_GET['list']) ? (int)$_GET['list'] : 0;
+        if (!$listId) {
+            http_response_code(400);
+            echo json_encode(['error' => 'list parameter required']);
+            return;
+        }
+
+        $db = Database::get();
+
+        // Verify run exists
+        $run = $db->prepare("SELECT id, trade FROM takeoff_runs WHERE id = ?");
+        $run->execute([$runId]);
+        $runRow = $run->fetch();
+        if (!$runRow) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Run not found']);
+            return;
+        }
+
+        // Verify list exists
+        $listStmt = $db->prepare("SELECT id, name FROM supplier_price_lists WHERE id = ?");
+        $listStmt->execute([$listId]);
+        $list = $listStmt->fetch();
+        if (!$list) {
+            http_response_code(404);
+            echo json_encode(['error' => 'Supplier price list not found']);
+            return;
+        }
+
+        // Load all items for this run
+        $itemStmt = $db->prepare("
+            SELECT id, category, description, quantity, unit, unit_notes,
+                   confidence, unit_cost_material, unit_cost_labor
+            FROM takeoff_items
+            WHERE run_id = ?
+            ORDER BY sort_order, category, id
+        ");
+        $itemStmt->execute([$runId]);
+        $items = $itemStmt->fetchAll();
+
+        // Load all supplier prices for this list
+        $spStmt = $db->prepare("
+            SELECT id, trade, category, description, unit, unit_price
+            FROM supplier_prices
+            WHERE list_id = ?
+        ");
+        $spStmt->execute([$listId]);
+        $supplierPrices = $spStmt->fetchAll();
+
+        // Load unit_cost defaults for default cost comparison
+        $ucStmt = $db->prepare("
+            SELECT trade, category, description, unit_cost_material, unit_cost_labor
+            FROM unit_costs
+            WHERE trade = ? OR trade = 'all'
+        ");
+        $ucStmt->execute([$runRow['trade']]);
+        $unitCostDefaults = [];
+        foreach ($ucStmt->fetchAll() as $uc) {
+            $key = $this->normalize($uc['category'] . ' ' . $uc['description']);
+            $unitCostDefaults[$key] = $uc;
+        }
+
+        // Build normalized supplier price index
+        $spNorm = [];
+        foreach ($supplierPrices as $sp) {
+            $catNorm  = $this->normalize($sp['category']);
+            $descNorm = $this->normalize($sp['description']);
+            $spNorm[] = [
+                'row'      => $sp,
+                'cat_norm' => $catNorm,
+                'desc_norm'=> $descNorm,
+                'full_norm'=> $catNorm . ' ' . $descNorm,
+                'words'    => $this->words($descNorm),
+            ];
+        }
+
+        $results  = [];
+        $matched  = 0;
+        $unmatched = 0;
+        $totalSupplierCost = 0.0;
+        $totalDefaultCost  = 0.0;
+
+        foreach ($items as $item) {
+            $catNorm  = $this->normalize($item['category']);
+            $descNorm = $this->normalize($item['description']);
+            $fullNorm = $catNorm . ' ' . $descNorm;
+            $itemWords = $this->words($descNorm);
+
+            $bestMatch  = null;
+            $bestScore  = 0.0;
+            $matchType  = null;
+
+            foreach ($spNorm as $sp) {
+                // 1. Exact category + description
+                if ($sp['cat_norm'] === $catNorm && $sp['desc_norm'] === $descNorm) {
+                    $bestMatch = $sp['row'];
+                    $bestScore = 1.0;
+                    $matchType = 'exact';
+                    break;
+                }
+
+                // 2. Contains match (description substring)
+                if (strlen($sp['desc_norm']) >= 4 && strlen($descNorm) >= 4) {
+                    if (str_contains($descNorm, $sp['desc_norm']) || str_contains($sp['desc_norm'], $descNorm)) {
+                        if (0.9 > $bestScore) {
+                            $bestMatch = $sp['row'];
+                            $bestScore = 0.9;
+                            $matchType = 'contains';
+                        }
+                        continue;
+                    }
+                }
+
+                // 3. Jaccard word overlap
+                if (!empty($itemWords) && !empty($sp['words'])) {
+                    $intersection = count(array_intersect($itemWords, $sp['words']));
+                    $union        = count(array_unique(array_merge($itemWords, $sp['words'])));
+                    $jaccard      = $union > 0 ? $intersection / $union : 0;
+                    if ($jaccard >= 0.5 && $jaccard > $bestScore) {
+                        $bestMatch = $sp['row'];
+                        $bestScore = $jaccard;
+                        $matchType = 'fuzzy';
+                    }
+                }
+            }
+
+            $qty          = (float)($item['quantity'] ?? 0);
+            $supplierPrice = $bestMatch ? (float)$bestMatch['unit_price'] : null;
+            $extendedCost  = ($supplierPrice !== null) ? round($qty * $supplierPrice, 2) : null;
+
+            // Default cost from item columns or unit_costs table
+            $ucKey = $this->normalize($item['category'] . ' ' . $item['description']);
+            $matDef = $item['unit_cost_material'] !== null
+                ? (float)$item['unit_cost_material']
+                : ($unitCostDefaults[$ucKey]['unit_cost_material'] ?? null);
+            $labDef = $item['unit_cost_labor'] !== null
+                ? (float)$item['unit_cost_labor']
+                : ($unitCostDefaults[$ucKey]['unit_cost_labor'] ?? null);
+            $defaultUnitCost = ($matDef !== null || $labDef !== null)
+                ? round(($matDef ?? 0) + ($labDef ?? 0), 4)
+                : null;
+            $defaultExtended = $defaultUnitCost !== null ? round($qty * $defaultUnitCost, 2) : null;
+
+            // Delta: supplier vs default (positive = savings, negative = premium)
+            $delta = ($extendedCost !== null && $defaultExtended !== null)
+                ? round($defaultExtended - $extendedCost, 2)
+                : null;
+
+            if ($bestMatch) {
+                $matched++;
+                $totalSupplierCost += $extendedCost ?? 0;
+            } else {
+                $unmatched++;
+            }
+            if ($defaultExtended !== null) {
+                $totalDefaultCost += $defaultExtended;
+            }
+
+            $results[] = [
+                'item_id'            => (int)$item['id'],
+                'category'           => $item['category'],
+                'description'        => $item['description'],
+                'quantity'           => $qty,
+                'unit'               => $item['unit'],
+                'confidence'         => $item['confidence'],
+                // Supplier match
+                'matched'            => $bestMatch !== null,
+                'match_type'         => $matchType,
+                'match_score'        => $bestScore > 0 ? round($bestScore, 3) : null,
+                'supplier_price_id'  => $bestMatch ? (int)$bestMatch['id'] : null,
+                'supplier_desc'      => $bestMatch ? $bestMatch['description'] : null,
+                'supplier_unit'      => $bestMatch ? $bestMatch['unit'] : null,
+                'supplier_unit_price'=> $supplierPrice,
+                'extended_cost'      => $extendedCost,
+                // Default comparison
+                'default_unit_cost'  => $defaultUnitCost,
+                'default_extended'   => $defaultExtended,
+                'delta'              => $delta,
+            ];
+        }
+
+        $totalSavings = round($totalDefaultCost - $totalSupplierCost, 2);
+
+        echo json_encode([
+            'run_id'               => $runId,
+            'list_id'              => $listId,
+            'list_name'            => $list['name'],
+            'matched'              => $matched,
+            'unmatched'            => $unmatched,
+            'total_items'          => count($items),
+            'total_supplier_cost'  => round($totalSupplierCost, 2),
+            'total_default_cost'   => round($totalDefaultCost, 2),
+            'total_savings'        => $totalSavings,
+            'items'                => $results,
+        ]);
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+
+    private function normalize(string $s): string {
+        $s = strtolower($s);
+        $s = preg_replace('/[^a-z0-9\s]/', ' ', $s);
+        return trim(preg_replace('/\s+/', ' ', $s));
+    }
+
+    private function words(string $normalized): array {
+        // Filter out short stop words for better Jaccard quality
+        $stop = ['a','an','the','of','in','on','at','and','or','for','to','with','per','sf','lf','ea','lb','cy'];
+        return array_values(array_filter(
+            explode(' ', $normalized),
+            fn($w) => strlen($w) >= 3 && !in_array($w, $stop, true)
+        ));
+    }
 }

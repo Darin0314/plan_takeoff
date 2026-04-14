@@ -173,6 +173,8 @@ try {
             (new ShareController())->create($id);
         } elseif ($method === 'GET' && $sub === 'shares') {
             (new ShareController())->list($id);
+        } elseif ($method === 'GET' && $sub === 'supplier-match') {
+            (new SupplierController())->supplierMatch($id);
         } elseif ($method === 'GET' && !$sub) {
             (new TakeoffController())->show($id);
         } else {

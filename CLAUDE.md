@@ -96,7 +96,7 @@ Construction plan set PDF → AI-extracted quantities by trade.
 
 ### Phase 13 — Material Supplier Price Feed
 - [x] 13.1: DB schema — `supplier_price_lists` + `supplier_prices` tables migrated. `SupplierController`: POST /supplier-price-lists (multipart CSV upload, flexible header matching via alias map, strips currency symbols, skips blank rows, updates row_count), GET /supplier-price-lists, DELETE /supplier-price-lists/{id} (cascade). api.js: getSupplierLists, uploadSupplierList (raw FormData, no Content-Type header), deleteSupplierList.
-- [ ] 13.2: Price matching engine — GET /takeoffs/{id}/supplier-match?list={listId}; matches supplier prices to takeoff items by normalized category+description; returns matched rows with supplier price, qty × price extended cost, vs unit_cost default
+- [x] 13.2: Price matching engine — GET /takeoffs/{runId}/supplier-match?list={listId}. 3-tier matching: (1) exact category+description, (2) contains/substring, (3) Jaccard word-overlap ≥ 0.5 (stop-words filtered). Returns per-item: matched bool, match_type, match_score, supplier_unit_price, extended_cost (qty×price), default_unit_cost, default_extended, delta (savings vs default). Summary: matched/unmatched counts, total_supplier_cost, total_default_cost, total_savings. api.js: getSupplierMatch(runId, listId).
 - [ ] 13.3: Supplier UI — "Supplier Prices" tab in TakeoffResults; supplier list picker; matched rows show supplier price + extended cost alongside existing unit cost defaults; unmatched rows flagged; summary total at top; Supplier Price Lists management page linked from header
 
 ### Phase 14 — Takeoff History & Audit Trail
@@ -111,4 +111,4 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [ ] 16.1: DB + backend — `sheet_notes` table (sheet_id, x_pct, y_pct, note TEXT, color, created_by, created_at); POST /sheets/{id}/notes, GET /sheets/{id}/notes, DELETE /sheet-notes/{id}
 - [ ] 16.2: UI — annotation layer in SheetModal; click on image to drop a pin (colored circle); pin shows note in tooltip on hover; "Add Note" mode toggle button in modal header; note input popover on click; existing pins listed in sidebar; delete button per note
 
-## Next Up: Phase 13.2 — Price matching engine (GET /takeoffs/{id}/supplier-match)
+## Next Up: Phase 13.3 — Supplier UI (tab in TakeoffResults + Supplier Price Lists management page)
