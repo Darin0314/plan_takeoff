@@ -50,7 +50,7 @@ Construction plan set PDF → AI-extracted quantities by trade.
 ### Phase 4 — Results UI
 - [x] 4.1: Takeoff summary dashboard — TakeoffResults.jsx fully wired to real DB data via api.getTakeoff(runId); items grouped by category, confidence badges, CSV export, calc notes; fixed site_work trade key mismatch; added all-trades mode (runs every analyzer sequentially, aggregates)
 - [x] 4.2: Sheet viewer — source sheet refs render as clickable blue chips; SheetModal shows full-size page image with zoom in/out (25% steps), open-in-tab, Esc/click-outside to close; sheet number + title + scale in header; grey chip when sheet not in project
-- [ ] 4.3: Manual quantity override
+- [x] 4.3: Manual quantity override — pencil icon on row hover → inline qty+unit inputs (Enter/Esc); overridden rows show amber qty + strikethrough original AI value; RotateCcw resets to AI; DB tracks is_override + original_quantity
 
 ### Phase 5 — Export
 - [ ] 5.1: PDF report generation (FPDF or similar)
@@ -61,4 +61,4 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [ ] 6.2: Unit type detection (Type A × N, Type B × M)
 - [ ] 6.3: Confidence scoring improvements
 
-## Next Up: Phase 4.3 — Manual quantity override (edit quantity/unit inline in TakeoffResults)
+## Next Up: Phase 5.1 — PDF report generation (FPDF or similar)
