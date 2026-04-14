@@ -48,7 +48,7 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 3.6: Concrete + site work — S/C-sheet targeting; extracts foundation (strip/spread/caisson/grade beam LF+EA), slabs (SF by thickness), concrete walls (SF form area), structural concrete, reinforcement (LB/SF), site work (grading SF, cut/fill CY, paving SF, curb/gutter LF, trenching LF); two trades: `concrete` + `sitework` share the analyzer, dispatcher filters by category
 
 ### Phase 4 — Results UI
-- [ ] 4.1: Takeoff summary dashboard (already scaffolded in TakeoffResults.jsx — needs real data)
+- [x] 4.1: Takeoff summary dashboard — TakeoffResults.jsx fully wired to real DB data via api.getTakeoff(runId); items grouped by category, confidence badges, CSV export, calc notes; fixed site_work trade key mismatch; added all-trades mode (runs every analyzer sequentially, aggregates)
 - [ ] 4.2: Sheet viewer (click source sheet → modal with page image)
 - [ ] 4.3: Manual quantity override
 
@@ -61,4 +61,4 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [ ] 6.2: Unit type detection (Type A × N, Type B × M)
 - [ ] 6.3: Confidence scoring improvements
 
-## Next Up: Phase 4.1 — Takeoff summary dashboard (wire TakeoffResults.jsx to real DB data)
+## Next Up: Phase 4.2 — Sheet viewer (click source sheet → modal with page image)
