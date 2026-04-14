@@ -6,6 +6,7 @@ import {
   ChevronUp, ChevronDown, Eye, EyeOff, RotateCcw
 } from 'lucide-react'
 import { api } from '../lib/api.js'
+import HistoryPanel from '../components/HistoryPanel.jsx'
 
 const TRADES = [
   { value: 'roofing',    label: 'Roofing',       color: 'bg-orange-600' },
@@ -40,12 +41,16 @@ export default function ProjectDetail() {
   const [loading, setLoading]   = useState(true)
   const [uploading, setUploading] = useState(false)
   const [runningTrade, setRunningTrade] = useState(null)
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchStatus, setBatchStatus]   = useState(null) // null | { trade: { status, item_count } }
+  const [navigatedTrades, setNavigatedTrades] = useState(new Set())
   const fileRef = useRef()
   const pollRef = useRef()
+  const batchPollRef = useRef()
 
   useEffect(() => {
     load()
-    return () => clearInterval(pollRef.current)
+    return () => { clearInterval(pollRef.current); clearInterval(batchPollRef.current) }
   }, [id])
 
   async function load() {
@@ -103,6 +108,45 @@ export default function ProjectDetail() {
     } finally {
       setRunningTrade(null)
     }
+  }
+
+  async function handleRunAllTrades() {
+    setBatchRunning(true)
+    setBatchStatus(null)
+    setNavigatedTrades(new Set())
+    try {
+      await api.runAllTrades(id)
+    } catch (err) {
+      alert(err.message)
+      setBatchRunning(false)
+      return
+    }
+    // Start polling batch status
+    clearInterval(batchPollRef.current)
+    batchPollRef.current = setInterval(async () => {
+      try {
+        const data = await api.getBatchStatus(id)
+        setBatchStatus(data.trades)
+        // Auto-navigate to most-recently-completed trade
+        setNavigatedTrades(prev => {
+          const next = new Set(prev)
+          Object.entries(data.trades).forEach(([trade, info]) => {
+            if (info.status === 'complete' && info.run_id && !next.has(trade)) {
+              next.add(trade)
+              navigate(`/takeoffs/${info.run_id}`)
+            }
+          })
+          return next
+        })
+        const terminal = ['complete', 'error', 'not_run']
+        const allDone = Object.values(data.trades).every(t => terminal.includes(t.status))
+        if (allDone) {
+          clearInterval(batchPollRef.current)
+          setBatchRunning(false)
+          await load()
+        }
+      } catch (_) {}
+    }, 2500)
   }
 
   if (loading) return (
@@ -195,28 +239,47 @@ export default function ProjectDetail() {
           <h2 className="text-lg font-semibold text-white mb-3">Run Takeoff</h2>
 
           <div className="bg-slate-800 border border-slate-700 rounded-xl p-4 mb-4">
-            <p className="text-slate-400 text-sm mb-3">Select a trade to extract quantities from the uploaded plans.</p>
-            <div className="grid grid-cols-2 gap-2">
-              {TRADES.map(t => (
-                <button
-                  key={t.value}
-                  onClick={() => handleRunTakeoff(t.value)}
-                  disabled={files.every(f => f.process_status !== 'complete' || !f.is_active) || runningTrade === t.value}
-                  className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all
-                    disabled:opacity-40 disabled:cursor-not-allowed
-                    ${t.value === 'all' ? 'col-span-2' : ''}
-                    ${t.color} hover:brightness-110 active:scale-95`}
-                >
-                  {runningTrade === t.value
-                    ? <Loader2 size={14} className="animate-spin" />
-                    : <Play size={14} />
-                  }
-                  {t.label}
-                </button>
-              ))}
-            </div>
-            {files.every(f => f.process_status !== 'complete' || !f.is_active) && (
-              <p className="text-slate-500 text-xs mt-2 text-center">Upload and process a plan set first</p>
+            {batchRunning || batchStatus ? (
+              <BatchProgressBoard
+                batchStatus={batchStatus}
+                onDismiss={() => { setBatchStatus(null); setBatchRunning(false); clearInterval(batchPollRef.current) }}
+                navigate={navigate}
+              />
+            ) : (
+              <>
+                <p className="text-slate-400 text-sm mb-3">Select a trade to extract quantities from the uploaded plans.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {TRADES.filter(t => t.value !== 'all').map(t => (
+                    <button
+                      key={t.value}
+                      onClick={() => handleRunTakeoff(t.value)}
+                      disabled={files.every(f => f.process_status !== 'complete' || !f.is_active) || runningTrade === t.value}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                        ${t.color} hover:brightness-110 active:scale-95`}
+                    >
+                      {runningTrade === t.value
+                        ? <Loader2 size={14} className="animate-spin" />
+                        : <Play size={14} />
+                      }
+                      {t.label}
+                    </button>
+                  ))}
+                  <button
+                    onClick={handleRunAllTrades}
+                    disabled={files.every(f => f.process_status !== 'complete' || !f.is_active)}
+                    className="col-span-2 flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all
+                      disabled:opacity-40 disabled:cursor-not-allowed
+                      bg-slate-600 hover:brightness-110 active:scale-95"
+                  >
+                    <LayoutGrid size={14} />
+                    Run All Trades
+                  </button>
+                </div>
+                {files.every(f => f.process_status !== 'complete' || !f.is_active) && (
+                  <p className="text-slate-500 text-xs mt-2 text-center">Upload and process a plan set first</p>
+                )}
+              </>
             )}
           </div>
 
@@ -268,6 +331,8 @@ export default function ProjectDetail() {
           )}
         </div>
       </div>
+
+      <HistoryPanel projectId={id} />
     </div>
   )
 }
@@ -609,6 +674,87 @@ function UnitTypePanel({ projectId }) {
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+const TRADE_LIST = [
+  { value: 'roofing',    label: 'Roofing',    color: 'bg-orange-600' },
+  { value: 'framing',    label: 'Framing',    color: 'bg-yellow-600' },
+  { value: 'drywall',    label: 'Drywall',    color: 'bg-purple-600' },
+  { value: 'electrical', label: 'Electrical', color: 'bg-blue-600' },
+  { value: 'hvac',       label: 'HVAC',       color: 'bg-cyan-600' },
+  { value: 'plumbing',   label: 'Plumbing',   color: 'bg-teal-600' },
+  { value: 'concrete',   label: 'Concrete',   color: 'bg-stone-600' },
+  { value: 'site_work',  label: 'Site Work',  color: 'bg-green-600' },
+]
+
+function BatchProgressBoard({ batchStatus, onDismiss, navigate }) {
+  const done   = batchStatus && Object.values(batchStatus).every(t => ['complete','error','not_run'].includes(t.status))
+  const total  = TRADE_LIST.length
+  const completed = batchStatus ? Object.values(batchStatus).filter(t => t.status === 'complete').length : 0
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <p className="text-white text-sm font-semibold">Running All Trades</p>
+          {batchStatus && (
+            <p className="text-slate-400 text-xs mt-0.5">
+              {done ? 'All trades complete' : `${completed} of ${total} complete…`}
+            </p>
+          )}
+        </div>
+        {done && (
+          <button
+            onClick={onDismiss}
+            className="text-xs text-slate-400 hover:text-slate-200 px-2 py-1 rounded hover:bg-slate-700 transition-colors"
+          >
+            ✕ Dismiss
+          </button>
+        )}
+      </div>
+
+      {/* Progress bar */}
+      {batchStatus && (
+        <div className="w-full bg-slate-700 rounded-full h-1.5 mb-3">
+          <div
+            className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
+            style={{ width: `${(completed / total) * 100}%` }}
+          />
+        </div>
+      )}
+
+      <div className="grid grid-cols-2 gap-2">
+        {TRADE_LIST.map(t => {
+          const info   = batchStatus?.[t.value]
+          const status = info?.status || 'pending'
+          return (
+            <button
+              key={t.value}
+              onClick={() => info?.status === 'complete' && info?.run_id && navigate(`/takeoffs/${info.run_id}`)}
+              disabled={status !== 'complete'}
+              className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-white transition-all
+                disabled:cursor-default text-left
+                ${status === 'complete' ? `${t.color} hover:brightness-110 active:scale-95` : 'bg-slate-700/50'}
+              `}
+            >
+              <span className="shrink-0">
+                {status === 'complete'   && <CheckCircle2 size={14} className="text-white" />}
+                {status === 'processing' && <Loader2 size={14} className="animate-spin text-blue-300" />}
+                {status === 'error'      && <AlertCircle size={14} className="text-red-400" />}
+                {(status === 'pending' || status === 'not_run') && <Clock size={14} className="text-slate-500" />}
+              </span>
+              <span className={status === 'complete' ? 'text-white' : 'text-slate-400'}>
+                {t.label}
+              </span>
+              {status === 'complete' && info?.item_count > 0 && (
+                <span className="ml-auto text-xs text-white/70 shrink-0">{info.item_count}</span>
+              )}
+            </button>
+          )
+        })}
+      </div>
     </div>
   )
 }

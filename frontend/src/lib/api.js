@@ -33,6 +33,8 @@ export const api = {
   runTakeoff:         (projectId, trade) => req('POST', `/projects/${projectId}/takeoffs`, { trade }),
   getProjectTakeoffs: (projectId)        => req('GET',  `/projects/${projectId}/takeoffs`),
   getTakeoff:         (runId)            => req('GET',  `/takeoffs/${runId}`),
+  runAllTrades:       (projectId)        => req('POST', `/projects/${projectId}/takeoffs/all-trades`),
+  getBatchStatus:     (projectId)        => req('GET',  `/projects/${projectId}/takeoffs/batch-status`),
 
   // Sheets
   getProjectSheets:      (projectId)        => req('GET',  `/projects/${projectId}/sheets`),
@@ -51,6 +53,9 @@ export const api = {
 
   // File breakdown
   getFileBreakdown: (runId) => req('GET', `/takeoffs/${runId}/file-breakdown`),
+
+  // Activity log
+  getProjectActivity: (projectId, page = 1) => req('GET', `/projects/${projectId}/activity?page=${page}`),
 
   // Diff / revision tracking
   getDiff: (newRunId, baselineRunId) => req('GET', `/takeoffs/${newRunId}/diff?baseline=${baselineRunId}`),
