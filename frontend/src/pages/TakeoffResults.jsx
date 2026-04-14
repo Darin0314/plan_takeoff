@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef, Fragment } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Download, FileDown, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check, ShieldAlert, DollarSign, List, GitCompare, Flag, MessageSquare, Files, Share2, Copy, Trash2, Eye, Clock, Tag } from 'lucide-react'
+import { Loader2, Download, FileDown, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check, ShieldAlert, DollarSign, List, GitCompare, Flag, MessageSquare, Files, Share2, Copy, Trash2, Eye, Clock, Tag, MapPin, Plus, StickyNote } from 'lucide-react'
 import { api } from '../lib/api.js'
 import CostPanel from '../components/CostPanel.jsx'
 import DiffPanel from '../components/DiffPanel.jsx'
@@ -1074,16 +1074,74 @@ function SourceSheetChips({ refs, sheetMap, onOpen }) {
   )
 }
 
-function SheetModal({ sheet, onClose }) {
-  const [zoom, setZoom] = useState(1)
-  const imgUrl = `/storage/${sheet.page_image_path}`
+const PIN_COLORS = {
+  yellow: { pin: 'bg-yellow-400 border-yellow-600', label: 'Yellow' },
+  red:    { pin: 'bg-red-500 border-red-700',       label: 'Red' },
+  green:  { pin: 'bg-green-500 border-green-700',   label: 'Green' },
+  blue:   { pin: 'bg-blue-500 border-blue-700',     label: 'Blue' },
+  purple: { pin: 'bg-purple-500 border-purple-700', label: 'Purple' },
+}
 
-  // Close on Escape
+function SheetModal({ sheet, onClose }) {
+  const [zoom, setZoom]           = useState(1)
+  const [addMode, setAddMode]     = useState(false)
+  const [showSidebar, setShowSidebar] = useState(false)
+  const [notes, setNotes]         = useState([])
+  const [hoveredNote, setHoveredNote] = useState(null)
+  const [popover, setPopover]     = useState(null) // { xPct, yPct, screenX, screenY, note, color }
+  const [saving, setSaving]       = useState(false)
+  const imgRef  = useRef()
+  const imgUrl  = `/storage/${sheet.page_image_path}`
+
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose() }
+    const handler = (e) => {
+      if (e.key === 'Escape') {
+        if (popover) { setPopover(null); return }
+        if (addMode) { setAddMode(false); return }
+        onClose()
+      }
+    }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [onClose])
+  }, [onClose, popover, addMode])
+
+  useEffect(() => {
+    api.getSheetNotes(sheet.id).then(d => setNotes(d.notes || [])).catch(() => {})
+  }, [sheet.id])
+
+  function handleImageClick(e) {
+    if (!addMode || !imgRef.current) return
+    e.stopPropagation()
+    const rect = imgRef.current.getBoundingClientRect()
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100
+    // Position popover near click but keep it on-screen
+    const px = Math.min(e.clientX + 12, window.innerWidth - 260)
+    const py = Math.min(e.clientY + 12, window.innerHeight - 180)
+    setPopover({ xPct, yPct, screenX: px, screenY: py, note: '', color: 'yellow' })
+  }
+
+  async function saveNote() {
+    if (!popover?.note.trim()) return
+    setSaving(true)
+    try {
+      const data = await api.createSheetNote(sheet.id, {
+        x_pct: popover.xPct,
+        y_pct: popover.yPct,
+        note:  popover.note.trim(),
+        color: popover.color,
+      })
+      setNotes(prev => [...prev, data.note])
+      setPopover(null)
+      setAddMode(false)
+    } catch (err) { alert(err.message) }
+    setSaving(false)
+  }
+
+  async function deleteNote(noteId) {
+    await api.deleteSheetNote(noteId).catch(() => {})
+    setNotes(prev => prev.filter(n => n.id !== noteId))
+  }
 
   return (
     <div
@@ -1119,6 +1177,28 @@ function SheetModal({ sheet, onClose }) {
             className="p-1.5 rounded hover:bg-slate-700 text-slate-300 transition-colors"
             title="Open full size in new tab"
           ><ExternalLink size={16} /></a>
+          {/* Add Note toggle */}
+          <button
+            onClick={() => { setAddMode(m => !m); setPopover(null) }}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm font-medium transition-colors ${
+              addMode ? 'bg-yellow-600 text-white' : 'hover:bg-slate-700 text-slate-300'
+            }`}
+            title="Click on image to add a note"
+          >
+            <MapPin size={15} />
+            {addMode ? 'Adding…' : 'Add Note'}
+          </button>
+          {/* Notes sidebar toggle */}
+          <button
+            onClick={() => setShowSidebar(s => !s)}
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded text-sm font-medium transition-colors ${
+              showSidebar ? 'bg-slate-600 text-white' : 'hover:bg-slate-700 text-slate-300'
+            }`}
+            title="View notes"
+          >
+            <StickyNote size={15} />
+            {notes.length > 0 && <span className="text-xs">{notes.length}</span>}
+          </button>
           <button
             onClick={onClose}
             className="p-1.5 rounded hover:bg-slate-700 text-slate-300 transition-colors ml-1"
@@ -1127,18 +1207,126 @@ function SheetModal({ sheet, onClose }) {
         </div>
       </div>
 
-      {/* Image area */}
-      <div
-        className="flex-1 overflow-auto flex items-start justify-center p-6"
-        onClick={e => e.stopPropagation()}
-      >
-        <img
-          src={imgUrl}
-          alt={sheet.sheet_title || sheet.sheet_number || 'Plan sheet'}
-          style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.15s' }}
-          className="max-w-none rounded shadow-2xl"
-        />
+      {/* Body */}
+      <div className="flex flex-1 overflow-hidden" onClick={e => e.stopPropagation()}>
+        {/* Image area */}
+        <div className="flex-1 overflow-auto flex items-start justify-center p-6">
+          {/* Wrapper carries the zoom transform so pins stay aligned */}
+          <div
+            style={{ transform: `scale(${zoom})`, transformOrigin: 'top center', transition: 'transform 0.15s', position: 'relative', display: 'inline-block' }}
+          >
+            <img
+              ref={imgRef}
+              src={imgUrl}
+              alt={sheet.sheet_title || sheet.sheet_number || 'Plan sheet'}
+              onClick={handleImageClick}
+              className={`max-w-none rounded shadow-2xl block ${addMode ? 'cursor-crosshair' : ''}`}
+            />
+            {/* Existing pins */}
+            {notes.map(n => (
+              <div
+                key={n.id}
+                style={{ position: 'absolute', left: `${n.x_pct}%`, top: `${n.y_pct}%`, transform: 'translate(-50%,-50%)', zIndex: 10 }}
+                onMouseEnter={() => setHoveredNote(n.id)}
+                onMouseLeave={() => setHoveredNote(null)}
+              >
+                <div className={`w-5 h-5 rounded-full border-2 shadow-lg cursor-pointer ${PIN_COLORS[n.color]?.pin || PIN_COLORS.yellow.pin}`} />
+                {hoveredNote === n.id && (
+                  <div className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 bg-slate-900 border border-slate-600 rounded-lg px-3 py-2 text-xs text-white whitespace-pre-wrap max-w-[220px] shadow-xl z-20 pointer-events-none">
+                    <p className="leading-snug">{n.note}</p>
+                    {n.user_name && <p className="text-slate-500 mt-1">{n.user_name}</p>}
+                  </div>
+                )}
+              </div>
+            ))}
+            {/* Pending pin preview */}
+            {popover && (
+              <div style={{ position: 'absolute', left: `${popover.xPct}%`, top: `${popover.yPct}%`, transform: 'translate(-50%,-50%)', zIndex: 10 }}>
+                <div className={`w-5 h-5 rounded-full border-2 shadow-lg animate-pulse ${PIN_COLORS[popover.color]?.pin || PIN_COLORS.yellow.pin}`} />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Notes sidebar */}
+        {showSidebar && (
+          <div className="w-64 bg-slate-900 border-l border-slate-700 flex flex-col shrink-0">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
+              <span className="text-sm font-semibold text-white">Notes</span>
+              <button
+                onClick={() => { setAddMode(true); setShowSidebar(false) }}
+                className="flex items-center gap-1 text-xs bg-yellow-600 hover:bg-yellow-500 text-white px-2 py-1 rounded transition-colors"
+              >
+                <Plus size={12} /> Add
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2 space-y-2">
+              {notes.length === 0 ? (
+                <p className="text-slate-500 text-xs text-center mt-6 italic">No notes yet.<br />Click "Add Note" and click on the plan to place a pin.</p>
+              ) : (
+                notes.map(n => (
+                  <div key={n.id} className="bg-slate-800 border border-slate-700 rounded-lg p-3 group">
+                    <div className="flex items-start gap-2">
+                      <div className={`w-3 h-3 rounded-full border shrink-0 mt-0.5 ${PIN_COLORS[n.color]?.pin || PIN_COLORS.yellow.pin}`} />
+                      <p className="text-xs text-slate-300 flex-1 leading-snug">{n.note}</p>
+                      <button
+                        onClick={() => deleteNote(n.id)}
+                        className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 transition-all shrink-0"
+                        title="Delete note"
+                      ><Trash2 size={12} /></button>
+                    </div>
+                    {n.user_name && <p className="text-slate-600 text-xs mt-1 pl-5">{n.user_name}</p>}
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* Note input popover — fixed, outside zoom context */}
+      {popover && (
+        <div
+          className="fixed z-[60] bg-slate-900 border border-slate-600 rounded-xl shadow-2xl p-4 w-56"
+          style={{ left: popover.screenX, top: popover.screenY }}
+          onClick={e => e.stopPropagation()}
+        >
+          <p className="text-xs text-slate-400 mb-2">Add a note at this location</p>
+          <textarea
+            autoFocus
+            value={popover.note}
+            onChange={e => setPopover(p => ({ ...p, note: e.target.value }))}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); saveNote() } }}
+            placeholder="Note…"
+            rows={3}
+            className="w-full bg-slate-800 border border-slate-600 rounded-lg px-2.5 py-2 text-sm text-white resize-none focus:outline-none focus:border-yellow-500 mb-2"
+          />
+          {/* Color picker */}
+          <div className="flex gap-1.5 mb-3">
+            {Object.entries(PIN_COLORS).map(([key, val]) => (
+              <button
+                key={key}
+                onClick={() => setPopover(p => ({ ...p, color: key }))}
+                className={`w-5 h-5 rounded-full border-2 transition-transform ${val.pin} ${popover.color === key ? 'scale-125' : 'opacity-60 hover:opacity-100'}`}
+                title={val.label}
+              />
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={saveNote}
+              disabled={saving || !popover.note.trim()}
+              className="flex-1 flex items-center justify-center gap-1 bg-yellow-600 hover:bg-yellow-500 disabled:opacity-40 text-white text-xs font-medium py-1.5 rounded-lg transition-colors"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Save
+            </button>
+            <button
+              onClick={() => setPopover(null)}
+              className="px-3 py-1.5 rounded-lg text-xs text-slate-400 hover:bg-slate-700 transition-colors"
+            >Cancel</button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
