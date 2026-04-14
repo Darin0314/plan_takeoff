@@ -34,18 +34,18 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 1.3: React 19 + Vite + Tailwind skeleton (Layout, ProjectList, ProjectDetail, TakeoffResults, api.js)
 
 ### Phase 2 — PDF Upload + Sheet Detection
-- [ ] 2.1: Python FastAPI app scaffold + venv (requirements: fastapi, uvicorn, pdf2image, anthropic, pymysql, python-dotenv, pillow)
-- [ ] 2.2: `/process-pdf` endpoint — pdf2image render at 150 DPI, store page images + thumbnails
-- [ ] 2.3: Claude title block reader — sheet type, sheet number, scale detection per page
-- [ ] 2.4: Status polling from PHP → frontend already built (polls every 3s when processing)
+- [x] 2.1: Python FastAPI app scaffold + venv — uvicorn on port 8008, systemd service (plan-takeoff.service), all packages installed; added total_pages + processed_pages to takeoff_runs
+- [x] 2.2: `/process-pdf` endpoint — pdf2image 150 DPI render, JPEG pages + 400px thumbs per file, plan_sheets rows, project_files status/page_count updated; unique key (file_id, page_number) added; `/file-status/{file_id}` polling endpoint
+- [x] 2.3: Claude Haiku title block reader — sheet_type, sheet_number, sheet_title, drawing_scale, scale_factor extracted per page; runs inline in process_pdf_job after render; all data written to plan_sheets
+- [x] 2.4: Status polling — project_files.process_status drives frontend poll (already wired in ProjectDetail.jsx); /file-status/{file_id} FastAPI endpoint available
 
 ### Phase 3 — Trade Analysis Engine
-- [ ] 3.1: Roofing takeoff (roof plan → area, ridge/hip/valley LF, eave LF)
-- [ ] 3.2: Framing + drywall (floor plan wall LF × floors, wall area, ceiling area)
-- [ ] 3.3: Electrical (E-sheets + RCP fixture/device counts)
-- [ ] 3.4: HVAC (M-sheets + equipment, duct, vent cover counts)
-- [ ] 3.5: Plumbing (P-sheets + fixture schedule counts, pipe runs)
-- [ ] 3.6: Concrete + site work (foundation area, slab, grading)
+- [x] 3.1: Roofing takeoff — Claude Haiku reads roof plan sheets; extracts area SF (with pitch factor), ridge/hip/valley/eave/rake LF, dormers/skylights EA; aggregates across multi-sheet sets; dispatcher + /run-takeoff route wired
+- [x] 3.2: Framing + drywall — shared analyzer on floor plan sheets; framing trade returns exterior/interior/bearing wall LF + floor system SF; drywall trade returns wall area + ceiling area SF; dispatcher filters by trade category
+- [x] 3.3: Electrical — targets E-sheets + RCP plans; counts lighting fixtures by type, receptacles (standard/GFCI/240V), switches, data/comm, panels, special equipment, low-voltage devices; aggregates across floors stripping floor-level notes
+- [x] 3.4: HVAC — targets M-sheets + mechanical keyword sheets; extracts AHU/furnace/heat pump/mini-split/ERV equipment counts + tonnage, supply/return/exhaust diffuser + grille counts by size, duct LF when dimensioned, exhaust fans, thermostats/zones
+- [x] 3.5: Plumbing — targets P-sheets + plumbing keyword sheets; extracts fixture counts (WC/lav/sink/tub/shower/urinal/floor drain/hose bib/mop sink), equipment (water heater/PRV/backflow/sump/grease trap), supply + DWV + gas pipe LF by size/material
+- [x] 3.6: Concrete + site work — S/C-sheet targeting; extracts foundation (strip/spread/caisson/grade beam LF+EA), slabs (SF by thickness), concrete walls (SF form area), structural concrete, reinforcement (LB/SF), site work (grading SF, cut/fill CY, paving SF, curb/gutter LF, trenching LF); two trades: `concrete` + `sitework` share the analyzer, dispatcher filters by category
 
 ### Phase 4 — Results UI
 - [ ] 4.1: Takeoff summary dashboard (already scaffolded in TakeoffResults.jsx — needs real data)
@@ -61,4 +61,4 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [ ] 6.2: Unit type detection (Type A × N, Type B × M)
 - [ ] 6.3: Confidence scoring improvements
 
-## Next Up: Phase 2.1 — Python FastAPI scaffold + venv
+## Next Up: Phase 4.1 — Takeoff summary dashboard (wire TakeoffResults.jsx to real DB data)
