@@ -31,6 +31,8 @@ require_once __DIR__ . '/src/Controllers/DiffController.php';
 require_once __DIR__ . '/src/Controllers/ProjectCompareController.php';
 require_once __DIR__ . '/src/Controllers/ShareController.php';
 require_once __DIR__ . '/src/Controllers/SupplierController.php';
+require_once __DIR__ . '/src/Controllers/SheetNoteController.php';
+require_once __DIR__ . '/src/Services/ActivityLogger.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -135,10 +137,16 @@ try {
             // list files for project — return from withFiles
             $project = Project::withFiles($id);
             echo json_encode(['files' => $project['files'] ?? []]);
+        } elseif ($id && $sub === 'takeoffs' && ($parts[3] ?? '') === 'all-trades' && $method === 'POST') {
+            (new TakeoffController())->runAllTrades($id);
+        } elseif ($id && $sub === 'takeoffs' && ($parts[3] ?? '') === 'batch-status' && $method === 'GET') {
+            (new TakeoffController())->batchStatus($id);
         } elseif ($id && $sub === 'takeoffs' && $method === 'POST') {
             (new TakeoffController())->run($id);
         } elseif ($id && $sub === 'takeoffs' && $method === 'GET') {
             (new TakeoffController())->forProject($id);
+        } elseif ($id && $sub === 'activity' && $method === 'GET') {
+            $ctrl->activity($id);
         } elseif ($id && !$sub && $method === 'GET')    { $ctrl->show($id); }
         elseif ($id && !$sub && $method === 'PUT')      { $ctrl->update($id); }
         elseif ($id && !$sub && $method === 'DELETE')   { $ctrl->destroy($id); }
@@ -195,6 +203,17 @@ try {
             (new ProjectController())->updateSheetMultiplier($id);
         } elseif ($method === 'PUT' && $sub2 === 'unit-type') {
             (new ProjectController())->updateSheetUnitType($id);
+        } elseif ($sub2 === 'notes' && $method === 'GET') {
+            (new SheetNoteController())->index($id);
+        } elseif ($sub2 === 'notes' && $method === 'POST') {
+            (new SheetNoteController())->store($id);
+        } else {
+            http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
+        }
+
+    } elseif ($resource === 'sheet-notes') {
+        if ($id && $method === 'DELETE') {
+            (new SheetNoteController())->destroy($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }

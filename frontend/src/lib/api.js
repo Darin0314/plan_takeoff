@@ -85,4 +85,9 @@ export const api = {
   createUnitCost: (data)          => req('POST',   '/unit-costs', data),
   updateUnitCost: (id, data)      => req('PUT',    `/unit-costs/${id}`, data),
   deleteUnitCost: (id)            => req('DELETE', `/unit-costs/${id}`),
+
+  // Sheet notes
+  getSheetNotes:    (sheetId)       => req('GET',    `/sheets/${sheetId}/notes`),
+  createSheetNote:  (sheetId, data) => req('POST',   `/sheets/${sheetId}/notes`, data),
+  deleteSheetNote:  (noteId)        => req('DELETE', `/sheet-notes/${noteId}`),
 }
