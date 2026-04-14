@@ -35,4 +35,19 @@ class ProjectController {
         Project::delete($id);
         echo json_encode(['success' => true]);
     }
+
+    public function sheets(int $projectId): void {
+        if (!Project::find($projectId)) { http_response_code(404); echo json_encode(['error' => 'Not found']); return; }
+        $db   = Database::get();
+        $stmt = $db->prepare("
+            SELECT ps.id, ps.file_id, ps.page_number, ps.sheet_number, ps.sheet_title,
+                   ps.sheet_type, ps.drawing_scale, ps.page_image_path, ps.thumbnail_path
+            FROM plan_sheets ps
+            JOIN project_files pf ON pf.id = ps.file_id
+            WHERE pf.project_id = ?
+            ORDER BY ps.file_id, ps.page_number
+        ");
+        $stmt->execute([$projectId]);
+        echo json_encode(['sheets' => $stmt->fetchAll()]);
+    }
 }

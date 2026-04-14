@@ -30,6 +30,8 @@ try {
 
         if ($id && $sub === 'upload' && $method === 'POST') {
             (new UploadController())->store($id);
+        } elseif ($id && $sub === 'sheets' && $method === 'GET') {
+            $ctrl->sheets($id);
         } elseif ($id && $sub === 'files' && $method === 'GET') {
             // list files for project — return from withFiles
             $project = Project::withFiles($id);

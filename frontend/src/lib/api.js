@@ -26,7 +26,10 @@ export const api = {
   getProjectFiles:  (projectId) => req('GET',  `/projects/${projectId}/files`),
 
   // Takeoffs
-  runTakeoff:       (projectId, trade) => req('POST', `/projects/${projectId}/takeoffs`, { trade }),
-  getProjectTakeoffs: (projectId)      => req('GET',  `/projects/${projectId}/takeoffs`),
-  getTakeoff:       (runId)    => req('GET',    `/takeoffs/${runId}`),
+  runTakeoff:         (projectId, trade) => req('POST', `/projects/${projectId}/takeoffs`, { trade }),
+  getProjectTakeoffs: (projectId)        => req('GET',  `/projects/${projectId}/takeoffs`),
+  getTakeoff:         (runId)            => req('GET',  `/takeoffs/${runId}`),
+
+  // Sheets
+  getProjectSheets:   (projectId)        => req('GET',  `/projects/${projectId}/sheets`),
 }
