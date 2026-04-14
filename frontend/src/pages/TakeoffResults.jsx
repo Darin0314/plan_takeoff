@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Download, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check } from 'lucide-react'
+import { Loader2, Download, FileDown, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check } from 'lucide-react'
 import { api } from '../lib/api.js'
 
 const CONFIDENCE_COLORS = {
@@ -135,12 +135,21 @@ export default function TakeoffResults() {
             </div>
           </div>
           {items.length > 0 && (
-            <button
-              onClick={exportCSV}
-              className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
-            >
-              <Download size={16} /> Export CSV
-            </button>
+            <div className="flex items-center gap-2">
+              <a
+                href={`/api/takeoffs/${runId}/pdf`}
+                download
+                className="flex items-center gap-2 bg-blue-700 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <FileDown size={16} /> Export PDF
+              </a>
+              <button
+                onClick={exportCSV}
+                className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium transition-colors"
+              >
+                <Download size={16} /> Export CSV
+              </button>
+            </div>
           )}
         </div>
       </div>

@@ -1,5 +1,12 @@
 <?php
-header('Content-Type: application/json');
+// PDF endpoint skips JSON content-type — set after routing
+$uri_check = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$uri_check  = rtrim(preg_replace('#^/api#', '', $uri_check), '/');
+$is_pdf = preg_match('#^/takeoffs/\d+/pdf$#', $uri_check);
+
+if (!$is_pdf) {
+    header('Content-Type: application/json');
+}
 header('Access-Control-Allow-Origin: *');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
@@ -14,6 +21,7 @@ require_once __DIR__ . '/src/Models/TakeoffRun.php';
 require_once __DIR__ . '/src/Controllers/ProjectController.php';
 require_once __DIR__ . '/src/Controllers/UploadController.php';
 require_once __DIR__ . '/src/Controllers/TakeoffController.php';
+require_once __DIR__ . '/src/Controllers/ReportController.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -56,7 +64,9 @@ try {
         }
 
     } elseif ($resource === 'takeoffs') {
-        if ($method === 'GET') {
+        if ($method === 'GET' && $sub === 'pdf') {
+            (new ReportController())->pdf($id);
+        } elseif ($method === 'GET' && !$sub) {
             (new TakeoffController())->show($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
