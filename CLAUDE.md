@@ -57,8 +57,8 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 5.2: CSV export (already wired in TakeoffResults.jsx)
 
 ### Phase 6 — Intelligence
-- [ ] 6.1: Repeat floor detection (auto-detect identical floors, multiply quantities)
+- [x] 6.1: Repeat floor detection — floor_multiplier + floor_multiplier_note on plan_sheets; floor_detector.py uses Claude Haiku to find "TYPICAL FLOORS 3-14" style annotations; dispatcher multiplies quantities when all source sheets share same multiplier > 1; FloorMultiplierPanel in ProjectDetail with Auto-Detect button + inline edit per sheet
 - [ ] 6.2: Unit type detection (Type A × N, Type B × M)
 - [ ] 6.3: Confidence scoring improvements
 
-## Next Up: Phase 6.1 — Repeat floor detection (auto-detect identical floors, multiply quantities)
+## Next Up: Phase 6.2 — Unit type detection (Type A × N, Type B × M)
