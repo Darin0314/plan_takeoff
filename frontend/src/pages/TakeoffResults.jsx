@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { Loader2, Download, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink } from 'lucide-react'
+import { Loader2, Download, CheckCircle2, AlertCircle, Info, X, ZoomIn, ZoomOut, ExternalLink, Pencil, RotateCcw, Check } from 'lucide-react'
 import { api } from '../lib/api.js'
 
 const CONFIDENCE_COLORS = {
@@ -59,6 +59,10 @@ export default function TakeoffResults() {
   }, [sheetMap])
 
   const closeModal = useCallback(() => setModalSheet(null), [])
+
+  function applyItemUpdate(updatedItem) {
+    setItems(prev => prev.map(i => i.id === updatedItem.id ? { ...i, ...updatedItem } : i))
+  }
 
   function exportCSV() {
     const rows = [
@@ -171,27 +175,7 @@ export default function TakeoffResults() {
                 </thead>
                 <tbody>
                   {catItems.map(item => (
-                    <tr key={item.id} className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="text-white text-sm">{item.description}</div>
-                        {item.calc_notes && (
-                          <div className="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
-                            <Info size={11} />{item.calc_notes}
-                          </div>
-                        )}
-                        <SourceSheetChips refs={parseRefs(item.source_sheets)} sheetMap={sheetMap} onOpen={openSheet} />
-                      </td>
-                      <td className="px-4 py-3 text-right font-mono text-white font-medium">
-                        {item.quantity != null ? Number(item.quantity).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
-                      </td>
-                      <td className="px-4 py-3 text-slate-300 text-sm">{item.unit || '—'}</td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">{item.unit_notes || ''}</td>
-                      <td className="px-4 py-3 text-center">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_COLORS[item.confidence] || ''}`}>
-                          {item.confidence}
-                        </span>
-                      </td>
-                    </tr>
+                    <ItemRow key={item.id} item={item} sheetMap={sheetMap} onOpen={openSheet} onUpdate={applyItemUpdate} />
                   ))}
                 </tbody>
               </table>
@@ -202,6 +186,148 @@ export default function TakeoffResults() {
 
       {modalSheet && <SheetModal sheet={modalSheet} onClose={closeModal} />}
     </div>
+  )
+}
+
+function ItemRow({ item, sheetMap, onOpen, onUpdate }) {
+  const [editing, setEditing]   = useState(false)
+  const [qty, setQty]           = useState('')
+  const [unit, setUnit]         = useState('')
+  const [saving, setSaving]     = useState(false)
+  const qtyRef = useRef()
+
+  function startEdit() {
+    setQty(item.quantity != null ? String(Number(item.quantity)) : '')
+    setUnit(item.unit || '')
+    setEditing(true)
+    setTimeout(() => qtyRef.current?.select(), 0)
+  }
+
+  function cancelEdit() { setEditing(false) }
+
+  async function save() {
+    const parsed = parseFloat(qty)
+    if (isNaN(parsed) || parsed < 0) return
+    setSaving(true)
+    try {
+      const res = await api.updateItem(item.id, { quantity: parsed, unit: unit.trim() || item.unit })
+      onUpdate(res.item)
+      setEditing(false)
+    } catch (_) {}
+    setSaving(false)
+  }
+
+  async function reset() {
+    setSaving(true)
+    try {
+      const res = await api.resetItem(item.id)
+      onUpdate(res.item)
+    } catch (_) {}
+    setSaving(false)
+  }
+
+  function onKeyDown(e) {
+    if (e.key === 'Enter')  save()
+    if (e.key === 'Escape') cancelEdit()
+  }
+
+  const isOverride = !!item.is_override
+
+  return (
+    <tr className="border-b border-slate-700/50 hover:bg-slate-700/30 transition-colors group">
+      <td className="px-5 py-3">
+        <div className="text-white text-sm">{item.description}</div>
+        {item.calc_notes && (
+          <div className="text-slate-500 text-xs mt-0.5 flex items-center gap-1">
+            <Info size={11} />{item.calc_notes}
+          </div>
+        )}
+        <SourceSheetChips refs={parseRefs(item.source_sheets)} sheetMap={sheetMap} onOpen={onOpen} />
+      </td>
+
+      {/* Quantity cell */}
+      <td className="px-4 py-3 text-right">
+        {editing ? (
+          <input
+            ref={qtyRef}
+            type="number"
+            min="0"
+            step="any"
+            value={qty}
+            onChange={e => setQty(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="w-24 bg-slate-700 border border-blue-500 rounded px-2 py-0.5 text-white font-mono text-sm text-right focus:outline-none"
+          />
+        ) : (
+          <div className="flex items-center justify-end gap-1.5">
+            {isOverride && (
+              <span className="text-xs text-amber-400 font-mono line-through opacity-60">
+                {item.original_quantity != null ? Number(item.original_quantity).toLocaleString(undefined, { maximumFractionDigits: 2 }) : ''}
+              </span>
+            )}
+            <span className={`font-mono font-medium ${isOverride ? 'text-amber-300' : 'text-white'}`}>
+              {item.quantity != null ? Number(item.quantity).toLocaleString(undefined, { maximumFractionDigits: 2 }) : '—'}
+            </span>
+          </div>
+        )}
+      </td>
+
+      {/* Unit cell */}
+      <td className="px-4 py-3 text-slate-300 text-sm">
+        {editing ? (
+          <input
+            type="text"
+            value={unit}
+            onChange={e => setUnit(e.target.value)}
+            onKeyDown={onKeyDown}
+            className="w-16 bg-slate-700 border border-blue-500 rounded px-2 py-0.5 text-white text-sm focus:outline-none"
+          />
+        ) : (
+          item.unit || '—'
+        )}
+      </td>
+
+      <td className="px-4 py-3 text-slate-400 text-xs">{item.unit_notes || ''}</td>
+
+      {/* Confidence + actions */}
+      <td className="px-4 py-3">
+        <div className="flex items-center justify-center gap-1">
+          {editing ? (
+            <>
+              <button onClick={save} disabled={saving} className="p-1 rounded hover:bg-green-700/40 text-green-400 transition-colors" title="Save (Enter)">
+                {saving ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+              </button>
+              <button onClick={cancelEdit} className="p-1 rounded hover:bg-slate-600 text-slate-400 transition-colors" title="Cancel (Esc)">
+                <X size={13} />
+              </button>
+            </>
+          ) : (
+            <>
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${CONFIDENCE_COLORS[item.confidence] || ''}`}>
+                {item.confidence}
+              </span>
+              <button
+                onClick={startEdit}
+                className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-slate-600 text-slate-400 transition-all"
+                title="Edit quantity"
+              >
+                <Pencil size={12} />
+              </button>
+              {isOverride && (
+                <button
+                  onClick={reset}
+                  disabled={saving}
+                  className="p-1 rounded hover:bg-slate-600 text-amber-400 transition-colors"
+                  title="Reset to AI value"
+                >
+                  <RotateCcw size={12} />
+                </button>
+              )}
+            </>
+          )}
+        </div>
+      </td>
+    </tr>
   )
 }
 

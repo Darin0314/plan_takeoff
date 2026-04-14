@@ -44,4 +44,29 @@ class TakeoffController {
         $runs = TakeoffRun::forProject($projectId);
         echo json_encode(['runs' => $runs]);
     }
+
+    public function updateItem(int $itemId): void {
+        $item = TakeoffRun::findItem($itemId);
+        if (!$item) { http_response_code(404); echo json_encode(['error' => 'Not found']); return; }
+
+        $data = json_decode(file_get_contents('php://input'), true) ?? [];
+        $qty  = isset($data['quantity']) ? (float)$data['quantity'] : null;
+        $unit = trim($data['unit'] ?? $item['unit'] ?? '');
+
+        if ($qty === null || $qty < 0) {
+            http_response_code(422);
+            echo json_encode(['error' => 'quantity must be a non-negative number']);
+            return;
+        }
+
+        TakeoffRun::updateItem($itemId, $qty, $unit);
+        echo json_encode(['item' => TakeoffRun::findItem($itemId)]);
+    }
+
+    public function resetItem(int $itemId): void {
+        $item = TakeoffRun::findItem($itemId);
+        if (!$item) { http_response_code(404); echo json_encode(['error' => 'Not found']); return; }
+        TakeoffRun::resetItem($itemId);
+        echo json_encode(['item' => TakeoffRun::findItem($itemId)]);
+    }
 }

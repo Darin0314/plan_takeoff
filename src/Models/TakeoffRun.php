@@ -67,6 +67,48 @@ class TakeoffRun {
         ]);
     }
 
+    public static function findItem(int $itemId): ?array {
+        $db = Database::get();
+        $stmt = $db->prepare("SELECT * FROM takeoff_items WHERE id = ?");
+        $stmt->execute([$itemId]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public static function updateItem(int $itemId, float $quantity, string $unit): void {
+        $db   = Database::get();
+        $item = self::findItem($itemId);
+        if (!$item) return;
+
+        // Capture original AI quantity on first override
+        $origQty   = $item['is_override'] ? $item['original_quantity'] : $item['quantity'];
+        $isOverride = ($quantity != $origQty || $unit !== ($item['unit'] ?? '')) ? 1 : 0;
+
+        $stmt = $db->prepare("
+            UPDATE takeoff_items
+               SET quantity = :qty, unit = :unit,
+                   is_override = :override, original_quantity = :orig
+             WHERE id = :id
+        ");
+        $stmt->execute([
+            ':qty'      => $quantity,
+            ':unit'     => $unit,
+            ':override' => $isOverride,
+            ':orig'     => $origQty,
+            ':id'       => $itemId,
+        ]);
+    }
+
+    public static function resetItem(int $itemId): void {
+        $db = Database::get();
+        $stmt = $db->prepare("
+            UPDATE takeoff_items
+               SET quantity = original_quantity, is_override = 0, original_quantity = NULL
+             WHERE id = :id AND is_override = 1
+        ");
+        $stmt->execute([':id' => $itemId]);
+    }
+
     public static function forProject(int $projectId): array {
         $db = Database::get();
         $stmt = $db->prepare("

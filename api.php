@@ -62,6 +62,17 @@ try {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }
 
+    } elseif ($resource === 'takeoff-items') {
+        $ctrl = new TakeoffController();
+        $sub2 = $parts[2] ?? '';
+        if ($method === 'PUT' && !$sub2) {
+            $ctrl->updateItem($id);
+        } elseif ($method === 'POST' && $sub2 === 'reset') {
+            $ctrl->resetItem($id);
+        } else {
+            http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
+        }
+
     } else {
         http_response_code(404);
         echo json_encode(['error' => 'Endpoint not found', 'uri' => $uri]);

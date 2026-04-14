@@ -32,4 +32,8 @@ export const api = {
 
   // Sheets
   getProjectSheets:   (projectId)        => req('GET',  `/projects/${projectId}/sheets`),
+
+  // Item overrides
+  updateItem:  (itemId, data) => req('PUT',  `/takeoff-items/${itemId}`, data),
+  resetItem:   (itemId)       => req('POST', `/takeoff-items/${itemId}/reset`),
 }
