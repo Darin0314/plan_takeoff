@@ -17,8 +17,10 @@ TRADE_ANALYZERS = {
     'hvac':       hvac.analyze,
     'plumbing':   plumbing.analyze,
     'concrete':   concrete.analyze,
-    'sitework':   concrete.analyze,   # same analyzer, dispatcher filters by category
+    'site_work':  concrete.analyze,   # same analyzer, dispatcher filters by category
 }
+
+ALL_TRADES = ['roofing', 'framing', 'drywall', 'electrical', 'hvac', 'plumbing', 'concrete', 'site_work']
 
 
 def _db():
@@ -107,29 +109,57 @@ def run_takeoff_job(run_id: int, project_id: int, trade: str):
             if s.get('page_image_path'):
                 s['abs_image_path'] = os.path.join(STORAGE_PATH, s['page_image_path'])
 
-        analyzer = TRADE_ANALYZERS.get(trade)
-        if analyzer is None:
-            _set_run_status(conn, run_id, 'error',
-                            {'error_message': f"No analyzer implemented for trade: {trade}"})
-            return
-
-        result = analyzer(sheets)   # returns {'items': [...], 'meta': {...}}
-        items  = result.get('items', [])
-
-        # Filter items to the requested trade category
         FRAMING_CATS  = {'Exterior Framing', 'Interior Framing', 'Bearing Walls', 'Floor System', 'Roof Framing'}
         DRYWALL_CATS  = {'Wall Drywall', 'Ceiling Drywall', 'Soffit/Special'}
         CONCRETE_CATS = {'Foundation', 'Concrete Slabs', 'Concrete Walls', 'Structural Concrete', 'Reinforcement'}
         SITEWORK_CATS = {'Site Work'}
-        if trade == 'framing':
-            items = [i for i in items if i.get('category') in FRAMING_CATS]
-        elif trade == 'drywall':
-            items = [i for i in items if i.get('category') in DRYWALL_CATS]
-        elif trade == 'concrete':
-            items = [i for i in items if i.get('category') in CONCRETE_CATS]
-        elif trade == 'sitework':
-            items = [i for i in items if i.get('category') in SITEWORK_CATS]
-        meta   = result.get('meta', {})
+
+        if trade == 'all':
+            # Run every trade analyzer, collect and concatenate all items
+            all_items    = []
+            total_in     = 0
+            total_out    = 0
+            model_used   = None
+            for t in ALL_TRADES:
+                fn     = TRADE_ANALYZERS[t]
+                result = fn(sheets)
+                meta_t = result.get('meta', {})
+                total_in  += meta_t.get('input_tokens', 0) or 0
+                total_out += meta_t.get('output_tokens', 0) or 0
+                model_used = model_used or meta_t.get('model')
+                raw = result.get('items', [])
+                # Apply per-trade category filter so shared analyzers don't double-emit
+                if t == 'framing':
+                    raw = [i for i in raw if i.get('category') in FRAMING_CATS]
+                elif t == 'drywall':
+                    raw = [i for i in raw if i.get('category') in DRYWALL_CATS]
+                elif t == 'concrete':
+                    raw = [i for i in raw if i.get('category') in CONCRETE_CATS]
+                elif t == 'site_work':
+                    raw = [i for i in raw if i.get('category') in SITEWORK_CATS]
+                all_items.extend(raw)
+            items = all_items
+            meta  = {'model': model_used, 'input_tokens': total_in, 'output_tokens': total_out}
+        else:
+            analyzer = TRADE_ANALYZERS.get(trade)
+            if analyzer is None:
+                _set_run_status(conn, run_id, 'error',
+                                {'error_message': f"No analyzer implemented for trade: {trade}"})
+                return
+
+            result = analyzer(sheets)
+            items  = result.get('items', [])
+            meta   = result.get('meta', {})
+
+            # Filter items to the requested trade category
+            if trade == 'framing':
+                items = [i for i in items if i.get('category') in FRAMING_CATS]
+            elif trade == 'drywall':
+                items = [i for i in items if i.get('category') in DRYWALL_CATS]
+            elif trade == 'concrete':
+                items = [i for i in items if i.get('category') in CONCRETE_CATS]
+            elif trade == 'site_work':
+                items = [i for i in items if i.get('category') in SITEWORK_CATS]
 
         # Clear any previous items for this run (idempotent re-run)
         with conn.cursor() as cur:
