@@ -3,6 +3,7 @@ const BASE = '/api'
 async function req(method, path, body, isFormData = false) {
   const opts = {
     method,
+    credentials: 'include',
     headers: isFormData ? {} : { 'Content-Type': 'application/json' },
     body: body ? (isFormData ? body : JSON.stringify(body)) : undefined,
   }
@@ -24,6 +25,9 @@ export const api = {
   uploadFile:       (projectId, formData) => req('POST', `/projects/${projectId}/upload`, formData, true),
   getFileSheets:    (fileId)  => req('GET',    `/files/${fileId}/sheets`),
   getProjectFiles:  (projectId) => req('GET',  `/projects/${projectId}/files`),
+  toggleFileActive: (fileId)  => req('PUT',  `/files/${fileId}/active`),
+  reorderFile:      (fileId, direction) => req('PUT', `/files/${fileId}/reorder`, { direction }),
+  reprocessFile:    (fileId)  => req('POST', `/files/${fileId}/reprocess`),
 
   // Takeoffs
   runTakeoff:         (projectId, trade) => req('POST', `/projects/${projectId}/takeoffs`, { trade }),
@@ -35,8 +39,44 @@ export const api = {
   detectFloors:          (projectId)        => req('POST', `/projects/${projectId}/detect-floors`),
   getFloorMultipliers:   (projectId)        => req('GET',  `/projects/${projectId}/floor-multipliers`),
   updateSheetMultiplier: (sheetId, data)    => req('PUT',  `/sheets/${sheetId}`, data),
+  detectUnitTypes:       (projectId)        => req('POST', `/projects/${projectId}/detect-unit-types`),
+  getUnitTypes:          (projectId)        => req('GET',  `/projects/${projectId}/unit-types`),
+  updateSheetUnitType:   (sheetId, data)    => req('PUT',  `/sheets/${sheetId}/unit-type`, data),
 
   // Item overrides
-  updateItem:  (itemId, data) => req('PUT',  `/takeoff-items/${itemId}`, data),
-  resetItem:   (itemId)       => req('POST', `/takeoff-items/${itemId}/reset`),
+  updateItem:    (itemId, data) => req('PUT',  `/takeoff-items/${itemId}`, data),
+  resetItem:     (itemId)       => req('POST', `/takeoff-items/${itemId}/reset`),
+  setItemCost:   (itemId, data) => req('PUT',  `/takeoff-items/${itemId}/cost`, data),
+  setAnnotation: (itemId, data) => req('PUT',  `/takeoff-items/${itemId}/annotation`, data),
+
+  // File breakdown
+  getFileBreakdown: (runId) => req('GET', `/takeoffs/${runId}/file-breakdown`),
+
+  // Diff / revision tracking
+  getDiff: (newRunId, baselineRunId) => req('GET', `/takeoffs/${newRunId}/diff?baseline=${baselineRunId}`),
+
+  // Project comparison
+  compareProjects: (idA, idB, trade) => req('GET', `/projects/compare?a=${idA}&b=${idB}&trade=${trade}`),
+
+  // Share links
+  createShare:  (runId, data)  => req('POST',   `/takeoffs/${runId}/share`, data),
+  getShares:    (runId)        => req('GET',    `/takeoffs/${runId}/shares`),
+  revokeShare:  (token)        => req('DELETE', `/shares/${token}`),
+  getSharedRun: (token)        => fetch('/api/share/' + token, { credentials: 'include' }).then(r => r.json()),
+
+  // Supplier price lists
+  getSupplierLists:    ()         => req('GET',    '/supplier-price-lists'),
+  deleteSupplierList:  (id)       => req('DELETE', `/supplier-price-lists/${id}`),
+  uploadSupplierList:  (formData) => fetch('/api/supplier-price-lists', {
+    method: 'POST',
+    credentials: 'include',
+    body: formData,  // multipart — no Content-Type header, browser sets boundary
+  }).then(r => r.json()),
+
+  // Cost estimating
+  getCostSummary: (runId)         => req('GET',    `/takeoffs/${runId}/cost-summary`),
+  getUnitCosts:   (trade)         => req('GET',    `/unit-costs${trade ? `?trade=${trade}` : ''}`),
+  createUnitCost: (data)          => req('POST',   '/unit-costs', data),
+  updateUnitCost: (id, data)      => req('PUT',    `/unit-costs/${id}`, data),
+  deleteUnitCost: (id)            => req('DELETE', `/unit-costs/${id}`),
 }

@@ -95,7 +95,7 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [x] 12.3: Share UI — "Share" button (violet) in TakeoffResults header; modal with expiry picker (no expiry/24h/7d/30d) + "Create Link" button; existing links listed with: full URL input (read-only), Copy button (green flash on copy), Revoke button (red), view count, expiry date, created date; expired links shown dimmed in red
 
 ### Phase 13 — Material Supplier Price Feed
-- [ ] 13.1: DB schema — `supplier_price_lists` (name, description, imported_at) + `supplier_prices` (list_id, trade, category, description, unit, unit_price) tables; POST /supplier-price-lists (CSV multipart upload, auto-parse header row); GET /supplier-price-lists
+- [x] 13.1: DB schema — `supplier_price_lists` + `supplier_prices` tables migrated. `SupplierController`: POST /supplier-price-lists (multipart CSV upload, flexible header matching via alias map, strips currency symbols, skips blank rows, updates row_count), GET /supplier-price-lists, DELETE /supplier-price-lists/{id} (cascade). api.js: getSupplierLists, uploadSupplierList (raw FormData, no Content-Type header), deleteSupplierList.
 - [ ] 13.2: Price matching engine — GET /takeoffs/{id}/supplier-match?list={listId}; matches supplier prices to takeoff items by normalized category+description; returns matched rows with supplier price, qty × price extended cost, vs unit_cost default
 - [ ] 13.3: Supplier UI — "Supplier Prices" tab in TakeoffResults; supplier list picker; matched rows show supplier price + extended cost alongside existing unit cost defaults; unmatched rows flagged; summary total at top; Supplier Price Lists management page linked from header
 
@@ -111,4 +111,4 @@ Construction plan set PDF → AI-extracted quantities by trade.
 - [ ] 16.1: DB + backend — `sheet_notes` table (sheet_id, x_pct, y_pct, note TEXT, color, created_by, created_at); POST /sheets/{id}/notes, GET /sheets/{id}/notes, DELETE /sheet-notes/{id}
 - [ ] 16.2: UI — annotation layer in SheetModal; click on image to drop a pin (colored circle); pin shows note in tooltip on hover; "Add Note" mode toggle button in modal header; note input popover on click; existing pins listed in sidebar; delete button per note
 
-## Next Up: Phase 13.1 — Material Supplier Price Feed (DB schema + CSV import)
+## Next Up: Phase 13.2 — Price matching engine (GET /takeoffs/{id}/supplier-match)

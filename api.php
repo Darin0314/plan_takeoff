@@ -1,4 +1,6 @@
 <?php
+session_start();
+
 // PDF endpoint skips JSON content-type — set after routing
 $uri_check = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $uri_check  = rtrim(preg_replace('#^/api#', '', $uri_check), '/');
@@ -7,9 +9,10 @@ $is_pdf = preg_match('#^/takeoffs/\d+/pdf$#', $uri_check);
 if (!$is_pdf) {
     header('Content-Type: application/json');
 }
-header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Origin: http://localhost:8106');
 header('Access-Control-Allow-Methods: GET, POST, PUT, DELETE, OPTIONS');
 header('Access-Control-Allow-Headers: Content-Type, Authorization');
+header('Access-Control-Allow-Credentials: true');
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
@@ -22,6 +25,12 @@ require_once __DIR__ . '/src/Controllers/ProjectController.php';
 require_once __DIR__ . '/src/Controllers/UploadController.php';
 require_once __DIR__ . '/src/Controllers/TakeoffController.php';
 require_once __DIR__ . '/src/Controllers/ReportController.php';
+require_once __DIR__ . '/src/Models/UnitCost.php';
+require_once __DIR__ . '/src/Controllers/CostController.php';
+require_once __DIR__ . '/src/Controllers/DiffController.php';
+require_once __DIR__ . '/src/Controllers/ProjectCompareController.php';
+require_once __DIR__ . '/src/Controllers/ShareController.php';
+require_once __DIR__ . '/src/Controllers/SupplierController.php';
 
 $method = $_SERVER['REQUEST_METHOD'];
 $uri    = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -33,7 +42,81 @@ try {
     $id       = isset($parts[1]) && is_numeric($parts[1]) ? (int)$parts[1] : null;
     $sub      = $parts[2] ?? '';
 
-    if ($resource === 'projects') {
+    // ── Auth routes (no session required) ──────────────────────────────────
+    if ($resource === 'auth') {
+        $action = $parts[1] ?? '';
+
+        if ($action === 'login' && $method === 'POST') {
+            $d = json_decode(file_get_contents('php://input'), true) ?? [];
+            $db = Database::get();
+            $st = $db->prepare("SELECT * FROM users WHERE email = ?");
+            $st->execute([$d['email'] ?? '']);
+            $user = $st->fetch(PDO::FETCH_ASSOC);
+            if (!$user || !password_verify($d['password'] ?? '', $user['password'])) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Invalid email or password']);
+                exit;
+            }
+            $_SESSION['user_id']    = $user['id'];
+            $_SESSION['user_email'] = $user['email'];
+            $_SESSION['user_name']  = $user['name'];
+            echo json_encode(['user' => ['id' => $user['id'], 'name' => $user['name'], 'email' => $user['email']]]);
+            exit;
+
+        } elseif ($action === 'logout' && $method === 'POST') {
+            session_destroy();
+            echo json_encode(['success' => true]);
+            exit;
+
+        } elseif ($action === 'me' && $method === 'GET') {
+            if (empty($_SESSION['user_id'])) {
+                http_response_code(401);
+                echo json_encode(['error' => 'Not authenticated']);
+                exit;
+            }
+            echo json_encode(['user' => [
+                'id'    => $_SESSION['user_id'],
+                'name'  => $_SESSION['user_name'],
+                'email' => $_SESSION['user_email'],
+            ]]);
+            exit;
+        }
+
+        http_response_code(404); echo json_encode(['error' => 'Not found']); exit;
+    }
+
+    // ── Public share route (no session required) ───────────────────────────
+    if ($resource === 'share' && $method === 'GET' && isset($parts[1])) {
+        (new ShareController())->publicShow($parts[1]);
+        exit;
+    }
+
+    // ── Public PDF via share token: GET /takeoffs/{id}/pdf?token={token} ──
+    if ($resource === 'takeoffs' && $method === 'GET' && $sub === 'pdf' && !empty($_GET['token'])) {
+        $db    = Database::get();
+        $stmt  = $db->prepare("SELECT * FROM shared_reports WHERE token = ? AND run_id = ?");
+        $stmt->execute([$_GET['token'], $id]);
+        $share = $stmt->fetch();
+        if ($share && (!$share['expires_at'] || strtotime($share['expires_at']) >= time())) {
+            (new ReportController())->pdf($id);
+            exit;
+        }
+        http_response_code(403);
+        echo json_encode(['error' => 'Invalid or expired share token']);
+        exit;
+    }
+
+    // ── Session guard — all other routes require login ─────────────────────
+    if (empty($_SESSION['user_id'])) {
+        http_response_code(401);
+        echo json_encode(['error' => 'Not authenticated']);
+        exit;
+    }
+
+    if ($resource === 'projects' && $id === null && isset($_GET['a']) && $method === 'GET') {
+        (new ProjectCompareController())->compare();
+
+    } elseif ($resource === 'projects') {
         $ctrl = new ProjectController();
 
         if ($id && $sub === 'upload' && $method === 'POST') {
@@ -44,6 +127,10 @@ try {
             $ctrl->detectFloors($id);
         } elseif ($id && $sub === 'floor-multipliers' && $method === 'GET') {
             $ctrl->floorMultipliers($id);
+        } elseif ($id && $sub === 'detect-unit-types' && $method === 'POST') {
+            $ctrl->detectUnitTypes($id);
+        } elseif ($id && $sub === 'unit-types' && $method === 'GET') {
+            $ctrl->unitTypes($id);
         } elseif ($id && $sub === 'files' && $method === 'GET') {
             // list files for project — return from withFiles
             $project = Project::withFiles($id);
@@ -63,6 +150,12 @@ try {
         $sub2 = $parts[2] ?? '';
         if ($sub2 === 'sheets' && $method === 'GET') {
             (new UploadController())->sheets($id);
+        } elseif ($sub2 === 'active' && $method === 'PUT') {
+            (new UploadController())->toggleActive($id);
+        } elseif ($sub2 === 'reorder' && $method === 'PUT') {
+            (new UploadController())->reorder($id);
+        } elseif ($sub2 === 'reprocess' && $method === 'POST') {
+            (new UploadController())->reprocess($id);
         } else {
             http_response_code(404); echo json_encode(['error' => 'Not found']);
         }
@@ -70,15 +163,36 @@ try {
     } elseif ($resource === 'takeoffs') {
         if ($method === 'GET' && $sub === 'pdf') {
             (new ReportController())->pdf($id);
+        } elseif ($method === 'GET' && $sub === 'cost-summary') {
+            (new CostController())->costSummary($id);
+        } elseif ($method === 'GET' && $sub === 'diff') {
+            (new DiffController())->compare($id);
+        } elseif ($method === 'GET' && $sub === 'file-breakdown') {
+            (new TakeoffController())->fileBreakdown($id);
+        } elseif ($method === 'POST' && $sub === 'share') {
+            (new ShareController())->create($id);
+        } elseif ($method === 'GET' && $sub === 'shares') {
+            (new ShareController())->list($id);
         } elseif ($method === 'GET' && !$sub) {
             (new TakeoffController())->show($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }
 
+    } elseif ($resource === 'shares') {
+        $token = $parts[1] ?? '';
+        if ($method === 'DELETE' && $token) {
+            (new ShareController())->revoke($token);
+        } else {
+            http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
+        }
+
     } elseif ($resource === 'sheets') {
-        if ($method === 'PUT') {
+        $sub2 = $parts[2] ?? '';
+        if ($method === 'PUT' && !$sub2) {
             (new ProjectController())->updateSheetMultiplier($id);
+        } elseif ($method === 'PUT' && $sub2 === 'unit-type') {
+            (new ProjectController())->updateSheetUnitType($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }
@@ -90,9 +204,28 @@ try {
             $ctrl->updateItem($id);
         } elseif ($method === 'POST' && $sub2 === 'reset') {
             $ctrl->resetItem($id);
+        } elseif ($method === 'PUT' && $sub2 === 'cost') {
+            (new CostController())->setItemCost($id);
+        } elseif ($method === 'PUT' && $sub2 === 'annotation') {
+            $ctrl->setAnnotation($id);
         } else {
             http_response_code(405); echo json_encode(['error' => 'Method not allowed']);
         }
+
+    } elseif ($resource === 'unit-costs') {
+        $ctrl = new CostController();
+        if (!$id && $method === 'GET')    { $ctrl->index(); }
+        elseif (!$id && $method === 'POST')  { $ctrl->store(); }
+        elseif ($id  && $method === 'PUT')   { $ctrl->update($id); }
+        elseif ($id  && $method === 'DELETE'){ $ctrl->destroy($id); }
+        else { http_response_code(405); echo json_encode(['error' => 'Method not allowed']); }
+
+    } elseif ($resource === 'supplier-price-lists') {
+        $ctrl = new SupplierController();
+        if (!$id && $method === 'GET')       { $ctrl->index(); }
+        elseif (!$id && $method === 'POST')  { $ctrl->store(); }
+        elseif ($id  && $method === 'DELETE'){ $ctrl->destroy($id); }
+        else { http_response_code(405); echo json_encode(['error' => 'Method not allowed']); }
 
     } else {
         http_response_code(404);
